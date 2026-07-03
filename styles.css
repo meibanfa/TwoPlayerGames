@@ -24,6 +24,31 @@
 
 * { box-sizing: border-box; }
 
+/* ---------- Thanh cuộn khớp tông gỗ/giấy ---------- */
+html {
+  scrollbar-width: thin;
+  scrollbar-color: var(--accent) transparent;
+}
+::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--accent) 62%, transparent);
+  border: 3px solid transparent;
+  background-clip: content-box;
+  background-clip: content-box;
+  border-radius: 999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--accent);
+  background-clip: content-box;
+}
+::-webkit-scrollbar-corner { background: transparent; }
+
 /* ---------- Accessibility: focus rõ ràng ---------- */
 :focus-visible {
   outline: 3px solid var(--accent);
