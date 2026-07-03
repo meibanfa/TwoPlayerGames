@@ -2382,7 +2382,7 @@
   const ACCENT_KEY = "tpg_accent"; // giữ key cũ để tương thích lựa chọn đã lưu
   // mỗi preset có swatch (gradient hiển thị trên nút) gồm màu nền + màu nhấn
   const PRESETS = [
-    { id: "default", vi: "Giấy ngà (mặc định)", en: "Warm Paper (default)", sw: "linear-gradient(135deg, #efe4d3 45%, #c66b4a 45%)" },
+    { id: "default", vi: "Gỗ ấm (mặc định)", en: "Warm Wood (default)", sw: "linear-gradient(135deg, #2e2417 45%, #e6b455 45%)" },
     { id: "ocean", vi: "Đại dương", en: "Ocean", sw: "linear-gradient(135deg, #123047 45%, #38e0d0 45%)" },
     { id: "sunset", vi: "Hoàng hôn", en: "Sunset", sw: "linear-gradient(135deg, #3a1d3d 45%, #ff8a5c 45%)" },
     { id: "forest", vi: "Rừng xanh", en: "Forest", sw: "linear-gradient(135deg, #15301f 45%, #7ee08a 45%)" },
