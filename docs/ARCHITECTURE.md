@@ -236,6 +236,38 @@ Hai tầng dịch:
 
 ---
 
+## 7b. Giao diện & theme (Cozy Warm)
+
+Toàn bộ màu sắc đi qua **biến CSS** khai báo ở `:root` trong `styles.css`
+(`--bg`, `--panel`, `--panel-2`, `--text`, `--muted`, `--p1`, `--p2`, `--accent`,
+`--line`...). Component hầu như không hardcode màu mà đọc các biến này, nên đổi
+cả theme chỉ cần đổi bộ biến gốc.
+
+**Hai chế độ (nút 🌙):**
+
+- **Mặc định — gỗ espresso tối, chữ kem sáng.** Đây là chế độ nền tảng: `:root`
+  đặt `--text` sáng nên **mọi bàn cờ của 76 game** (vốn thiết kế cho nền tối) hiển
+  thị đúng ngay.
+- **Giấy sáng** — bật khi `<body>` có class `.theme-light` (lưu ở `localStorage`
+  khóa `tpg_theme`). Block `body.theme-light { ... }` ghi đè bộ biến sang tông giấy
+  ngà + chữ nâu đậm cho phần **khung** (header, thẻ game, sidebar, panel).
+
+**Điểm mấu chốt — khu chơi game luôn tối:** `#gameView` ghi đè cục bộ `--text`,
+`--muted`, `--panel`, `--panel-2`, `--line` về tông gỗ tối, **bất kể** đang ở chế độ
+nào. Nhờ đó bàn cờ + HUD luôn là "chữ sáng trên gỗ tối" và không bao giờ rơi vào
+cảnh "chữ sáng trên nền sáng" khi người dùng bật chế độ giấy. Khi thêm/sửa game,
+cứ dùng các biến CSS (`var(--text)`, `var(--panel)`...) thay vì màu cứng để tự
+hưởng cơ chế này.
+
+**Bộ chọn tông (nút 🎨):** đặt `data-preset` lên `<body>`; mỗi
+`body[data-preset="..."]` (ocean/sunset/forest/rose/mono) chỉ đổi lại vài biến nền +
+`--accent`. Lựa chọn lưu ở `localStorage` khóa `tpg_accent`.
+
+**Typography:** tiêu đề dùng serif **Fraunces** (`--font-head`), thân dùng
+**Nunito Sans** (`--font-body`).
+
+---
+
 ## 8. Kiểm thử
 
 | Lệnh | Nội dung |
