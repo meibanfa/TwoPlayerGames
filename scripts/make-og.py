@@ -56,7 +56,7 @@ def pill(d, cx, y, text, font, color):
 
 
 def main():
-    top, bot = (17, 20, 46), (11, 14, 34)
+    top, bot = (44, 35, 24), (33, 26, 18)
     base = Image.new("RGB", (W, H))
     px = base.load()
     for yy in range(H):
@@ -65,21 +65,21 @@ def main():
             px[xx, yy] = c
     img = base.convert("RGBA")
 
-    soft_glow(img, 150, 40, 460, (255, 93, 115), 90)
-    soft_glow(img, 1060, 70, 460, (77, 208, 225), 90)
-    soft_glow(img, 600, 660, 520, (122, 140, 255), 70)
+    soft_glow(img, 150, 40, 460, (224, 138, 92), 82)
+    soft_glow(img, 1060, 70, 460, (110, 197, 188), 78)
+    soft_glow(img, 600, 660, 520, (230, 180, 85), 62)
 
     d = ImageDraw.Draw(img)
-    center_text(d, 150, "Game 2 Người", load_font(110, True), (255, 209, 102))
-    center_text(d, 300, "47 trò chơi 2 người · Two-Player Games",
-                load_font(40, True), (238, 241, 255))
+    center_text(d, 150, "Game 2 Người", load_font(110, True), (230, 180, 85))
+    center_text(d, 300, "76 trò chơi 2 người · Two-Player Games",
+                load_font(40, True), (243, 234, 219))
     center_text(d, 372, "Chơi chung máy · Đấu AI · Online",
-                load_font(30), (154, 160, 208))
+                load_font(30), (195, 177, 153))
 
     pill_font = load_font(26, True)
-    pill(d, 410, 470, "Cờ", pill_font, (255, 209, 102))
-    pill(d, 600, 470, "Hành động", pill_font, (77, 208, 225))
-    pill(d, 800, 470, "Suy luận", pill_font, (255, 143, 177))
+    pill(d, 410, 470, "Cờ", pill_font, (230, 180, 85))
+    pill(d, 600, 470, "Hành động", pill_font, (110, 197, 188))
+    pill(d, 800, 470, "Suy luận", pill_font, (224, 138, 92))
 
     img.convert("RGB").save(os.path.normpath(OUT), "PNG")
     print("Da tao", os.path.normpath(OUT))

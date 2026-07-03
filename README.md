@@ -29,7 +29,8 @@ Bộ trò chơi đối kháng cho 2 người chơi, hỗ trợ **chơi chung m�
 - **Khung chat** trong phòng online kèm các câu nhắn nhanh
 - **Trang Hồ sơ**: đổi tên + 24 avatar, thống kê, **12+ thành tích**, **bảng xếp hạng** game, **lịch sử ván đấu** (có nút **▶ Xem lại** để phát lại trọn ván đã lưu) + biểu đồ hoạt động 14 ngày
 - **Thử thách hằng ngày** (daily challenge) với chuỗi ngày liên tiếp
-- **Chế độ sáng / tối** và **nhạc nền + chỉnh âm lượng** (tự tắt khi rời tab)
+- **Giao diện "cozy" tông gỗ ấm / giấy ngà** (warm wood & paper): mặc định nền gỗ espresso chữ kem sáng, nút 🌙 chuyển sang chế độ giấy sáng; khu vực chơi luôn giữ tông gỗ tối để bàn cờ dễ đọc. Font serif Fraunces + Nunito Sans.
+- **6 tông màu** đổi nhanh qua nút 🎨 và **nhạc nền + chỉnh âm lượng** (tự tắt khi rời tab)
 - **PWA**: cài như ứng dụng, chạy offline (service worker)
 - **Song ngữ Việt / Anh** (nút 🌐) — dịch **toàn bộ**: khung giao diện, tên + mô tả + hướng dẫn của 76 game, và **trạng thái khi đang chơi** (thông báo lượt, nhãn HUD, nút trong game). Có test tự động chống sót chữ Việt.
 - **Chia sẻ** kết quả / mã phòng qua Web Share API (fallback copy)
