@@ -41,6 +41,10 @@
     lobbyGameSelect: $("lobbyGameSelect"),
     lobbyOptionsPanel: $("lobbyOptionsPanel"),
     lobbyOptionsList: $("lobbyOptionsList"),
+    mmGameSelect: $("mmGameSelect"),
+    mmFindBtn: $("mmFindBtn"),
+    mmCancelBtn: $("mmCancelBtn"),
+    mmStatus: $("mmStatus"),
     createNameInput: $("createNameInput"),
     joinNameInput: $("joinNameInput"),
     lobbyState: $("lobbyState"),
@@ -160,6 +164,7 @@
   let online = null; // null = chơi chung máy; {roomSeat, seat, seed} = online
   let sessionToken = null; // token phiên để kết nối lại phòng
   let reconnecting = false;
+  let matchmaking = false; // đang trong hàng chờ tìm trận nhanh
   let resuming = false;    // đang thử khôi phục ván online sau khi tải lại trang
   const SESSION_KEY = "tpg_online_session"; // lưu phiên để rejoin khi lỡ refresh
   let vsAI = false;  // true = đang đấu với máy (local)
@@ -1705,6 +1710,9 @@
     el.lobbyError.textContent = "";
     el.joinCodeInput.value = "";
     setLobbyState(tt("lobbyReady"), "info");
+    buildMatchGameSelect(preselect?.id || "");
+    setMatchmakingSearching(false);
+    setMatchStatus("");
     show("lobbyView");
     startRoomPolling();
   }
@@ -1854,6 +1862,27 @@
   });
 
   Net.on("joined", (m) => { sessionToken = m.token || sessionToken; });
+
+  // ---- Matchmaking (tìm trận nhanh) ----
+  Net.on("queued", (m) => {
+    setMatchmakingSearching(true);
+    const game = getGameById(m.gameId);
+    setMatchStatus(tt("mmSearching").replace("{game}", game ? gameName(game) : m.gameId), "info");
+  });
+
+  Net.on("unqueued", () => {
+    setMatchmakingSearching(false);
+    setMatchStatus("", "info");
+  });
+
+  // Ghép trận thành công: nhận token phiên rồi để handler "start" (chạy ngay sau) khởi động ván.
+  Net.on("matched", (m) => {
+    setMatchmakingSearching(false);
+    sessionToken = m.token || sessionToken;
+    setMatchStatus(tt("mmFound"), "info");
+    showToast(tt("mmFound"));
+    if (window.Sound) Sound.play("notify");
+  });
 
   Net.on("error", (m) => {
     const text = "⚠️ " + (m.message || tt("genericConnErr"));
@@ -2308,9 +2337,64 @@
   }
 
   function closeLobby() {
+    cancelMatchmaking();
     leavePendingRoom();
     show(lobbyReturnView);
   }
+
+  // ====================== Tìm trận nhanh (matchmaking) ======================
+  // Nạp danh sách game (chỉ game hỗ trợ online) vào ô chọn tìm trận.
+  function buildMatchGameSelect(preselectId = "") {
+    if (!el.mmGameSelect) return;
+    el.mmGameSelect.innerHTML = "";
+    GameRegistry.games
+      .filter((g) => g.onlineReady !== false)
+      .slice()
+      .sort((a, b) => gameName(a).localeCompare(gameName(b)))
+      .forEach((game) => {
+        const option = document.createElement("option");
+        option.value = game.id;
+        option.textContent = gameName(game);
+        el.mmGameSelect.appendChild(option);
+      });
+    if (preselectId) el.mmGameSelect.value = preselectId;
+  }
+
+  function setMatchStatus(text, kind = "info") {
+    if (!el.mmStatus) return;
+    el.mmStatus.textContent = text || "";
+    el.mmStatus.className = "mm-status" + (text ? " " + kind : " hidden");
+  }
+
+  // Bật/tắt trạng thái "đang tìm": đổi nút, khóa ô chọn.
+  function setMatchmakingSearching(on) {
+    matchmaking = on;
+    if (el.mmFindBtn) el.mmFindBtn.classList.toggle("hidden", on);
+    if (el.mmCancelBtn) el.mmCancelBtn.classList.toggle("hidden", !on);
+    if (el.mmGameSelect) el.mmGameSelect.disabled = on;
+  }
+
+  async function findMatch() {
+    if (matchmaking) return;
+    const gameId = el.mmGameSelect ? el.mmGameSelect.value : "";
+    if (!gameId) { setMatchStatus(tt("mmPickGame"), "err"); return; }
+    if (!(await ensureConnected())) { setMatchStatus(tt("connectErr"), "err"); return; }
+    const playerName = readPlayerName(el.createNameInput, tt("player1"));
+    const game = getGameById(gameId);
+    setMatchmakingSearching(true);
+    setMatchStatus(tt("mmSearching").replace("{game}", game ? gameName(game) : gameId), "info");
+    Net.send("queue", { gameId, playerName, auth: authToken() });
+  }
+
+  function cancelMatchmaking() {
+    if (!matchmaking) return;
+    Net.send("unqueue");
+    setMatchmakingSearching(false);
+    setMatchStatus("", "info");
+  }
+
+  if (el.mmFindBtn) el.mmFindBtn.addEventListener("click", findMatch);
+  if (el.mmCancelBtn) el.mmCancelBtn.addEventListener("click", cancelMatchmaking);
 
   // ---- Điều hướng màn hình ----
   function show(viewId) {

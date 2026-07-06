@@ -25,6 +25,7 @@ Bộ trò chơi đối kháng cho 2 người chơi, hỗ trợ **chơi chung m�
 - **AI 3 mức độ** (Dễ / Vừa / Khó) cho nhiều game cờ và game khác; gợi ý nước đi cho Minesweeper, Hangman, Nối Từ
 - **Hoàn tác (undo)** khi chơi chung máy ở nhiều game cờ
 - **Phòng online bằng mã 4 chữ số** + **danh sách phòng công khai** để vào chơi một chạm
+- **Tìm trận nhanh (matchmaking)**: chọn game rồi bấm tìm — server tự ghép hai người đang chờ cùng game vào một phòng ranked
 - **Tự kết nối lại** khi rớt mạng (giữ phòng 45 giây + phát lại nước đi) và **xem lại ván (replay)** online
 - **Khung chat** trong phòng online kèm các câu nhắn nhanh
 - **Trang Hồ sơ**: đổi tên + 24 avatar, thống kê, **12+ thành tích**, **bảng xếp hạng** game, **lịch sử ván đấu** (có nút **▶ Xem lại** để phát lại trọn ván đã lưu) + biểu đồ hoạt động 14 ngày
@@ -203,6 +204,10 @@ Khi tạo/vào phòng, client có thể kèm `auth` (token tài khoản). Nếu 
 server chỉ tính **ELO** khi hai báo cáo **khớp nhau** (chống gian lận cơ bản) rồi gửi lại
 `rated` kèm điểm mới. Đồng bộ hồ sơ + bảng xếp hạng dùng HTTP API riêng (`/api/register`,
 `/api/login`, `/api/logout`, `/api/state`, `/api/leaderboard`, `/api/rating`).
+
+**Tìm trận nhanh (matchmaking):** client gửi `queue` (kèm `gameId` + `auth`) để vào hàng chờ;
+server ghép hai người đang chờ **cùng game** vào một phòng ranked mới rồi gửi `matched` + `start`.
+Gửi `unqueue` để hủy tìm. Hàng chờ tự dọn khi người chơi rời hoặc rớt mạng.
 
 ## ⚠️ Lưu ý
 

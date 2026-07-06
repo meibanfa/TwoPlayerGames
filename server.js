@@ -386,7 +386,75 @@ function otherPlayer(room, ws) {
   return room.players.find((p) => p && p !== ws) || null;
 }
 
+// ---------- Matchmaking "Tìm trận nhanh" ----------
+// Hàng chờ theo gameId: mỗi phần tử là một ws đang chờ ghép trận.
+// Khi có 2 người cùng game -> tạo phòng ranked và start cho cả hai.
+const matchQueue = new Map(); // gameId -> [ws, ws, ...]
+
+// Bỏ một ws khỏi mọi hàng chờ (khi rời, rớt mạng, hoặc bấm hủy).
+function dequeue(ws) {
+  const gid = ws.queueGame;
+  if (!gid) return;
+  const q = matchQueue.get(gid);
+  if (q) {
+    const idx = q.indexOf(ws);
+    if (idx >= 0) q.splice(idx, 1);
+    if (!q.length) matchQueue.delete(gid);
+  }
+  ws.queueGame = null;
+}
+
+// Ghép hai người trong cùng phòng ranked mới, phát start cho cả hai.
+function pairMatch(gameId, wsA, wsB) {
+  leaveRoom(wsA);
+  leaveRoom(wsB);
+  const code = makeCode();
+  const seed = Math.floor(Math.random() * 1e9);
+  const firstSeat = Math.random() < 0.5 ? 0 : 1;
+  const token0 = makeToken();
+  const token1 = makeToken();
+  const acctA = wsA.queueAccount || null;
+  const acctB = wsB.queueAccount || null;
+  const nameA = wsA.queueName || "Người chơi 1";
+  const nameB = wsB.queueName || "Người chơi 2";
+  const ranked = !!(acctA && acctB && acctA !== acctB);
+  rooms.set(code, {
+    players: [wsA, wsB], names: [nameA, nameB], tokens: [token0, token1],
+    accounts: [acctA, acctB], results: [null, null], history: [], dcTimers: [null, null],
+    gameId, seed, firstSeat, round: 1, restartVotes: new Set(), options: {}, public: false, ranked,
+  });
+  wsA.roomCode = code; wsA.seat = 0;
+  wsB.roomCode = code; wsB.seat = 1;
+  const names = [nameA, nameB];
+  send(wsA, "matched", { code, seat: 0, token: token0, gameId, seed, firstSeat, round: 1, options: {}, playerNames: names, ranked });
+  send(wsB, "matched", { code, seat: 1, token: token1, gameId, seed, firstSeat, round: 1, options: {}, playerNames: names, ranked });
+  send(wsA, "start", { code, seat: 0, gameId, seed, firstSeat, round: 1, options: {}, playerNames: names, ranked });
+  send(wsB, "start", { code, seat: 1, gameId, seed, firstSeat, round: 1, options: {}, playerNames: names, ranked });
+}
+
+// Thêm ws vào hàng chờ; nếu có người khác chờ sẵn thì ghép ngay.
+function enqueue(ws, gameId) {
+  dequeue(ws);
+  const q = matchQueue.get(gameId) || [];
+  // Ghép với người đầu hàng còn mở kết nối và không phải chính mình.
+  while (q.length) {
+    const partner = q.shift();
+    if (partner === ws) continue;
+    if (partner.readyState !== partner.OPEN) { partner.queueGame = null; continue; }
+    if (!q.length) matchQueue.delete(gameId); else matchQueue.set(gameId, q);
+    partner.queueGame = null;
+    pairMatch(gameId, partner, ws);
+    return;
+  }
+  // Không có ai -> vào hàng chờ.
+  q.push(ws);
+  matchQueue.set(gameId, q);
+  ws.queueGame = gameId;
+  send(ws, "queued", { gameId });
+}
+
 function leaveRoom(ws) {
+  dequeue(ws); // rời phòng cũng rời mọi hàng chờ ghép trận
   const code = ws.roomCode;
   if (!code) return;
   const room = rooms.get(code);
@@ -519,6 +587,23 @@ wss.on("connection", (ws, req) => {
         // báo cho cả hai bắt đầu (kèm options của chủ phòng)
         send(room.players[0], "start", { code, seat: 0, gameId: room.gameId, seed: room.seed, firstSeat: room.firstSeat, round: room.round, options: room.options, playerNames: room.names, ranked });
         send(room.players[1], "start", { code, seat: 1, gameId: room.gameId, seed: room.seed, firstSeat: room.firstSeat, round: room.round, options: room.options, playerNames: room.names, ranked });
+        break;
+      }
+
+      case "queue": {
+        if (!rateLimit(ws, "lobby", 18, 60_000)) return send(ws, "error", { message: "Bạn thao tác quá nhanh. Hãy thử lại sau." });
+        if (!isValidGameId(msg.gameId)) return send(ws, "error", { message: "Game không hợp lệ." });
+        if (rooms.size >= MAX_ROOMS) return send(ws, "error", { message: "Máy chủ đã đạt giới hạn số phòng. Thử lại sau." });
+        const acct = accounts.userByToken(msg.auth);
+        ws.queueAccount = acct ? acct.username : null;
+        ws.queueName = cleanPlayerName(msg.playerName, "Người chơi");
+        enqueue(ws, msg.gameId);
+        break;
+      }
+
+      case "unqueue": {
+        dequeue(ws);
+        send(ws, "unqueued", {});
         break;
       }
 
@@ -656,6 +741,7 @@ wss.on("connection", (ws, req) => {
   });
 
   ws.on("close", () => {
+    dequeue(ws); // rời hàng chờ tìm trận nếu đang xếp
     handleDisconnect(ws);
     // Giải phóng bộ đếm kết nối theo IP + tổng.
     const n = (ipConnections.get(ws.ip) || 1) - 1;

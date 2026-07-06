@@ -254,6 +254,18 @@
       <button class="btn back-btn" id="lobbyBackBtn" data-i18n="backReturn">← Quay lại</button>
       <h2 class="mode-title" id="lobbyTitle"></h2>
       <div class="room-state hidden" id="lobbyState" role="status" aria-live="polite"></div>
+      <div class="matchmaking" id="matchmaking">
+        <div class="mm-info">
+          <h3 data-i18n="mmH">⚡ Tìm trận nhanh</h3>
+          <p data-i18n="mmP">Chọn game rồi bấm tìm — hệ thống tự ghép bạn với một người đang chờ cùng game. Đăng nhập để tính ELO.</p>
+        </div>
+        <div class="mm-controls">
+          <select class="option-select mm-game-select" id="mmGameSelect"></select>
+          <button class="btn primary" id="mmFindBtn" type="button" data-i18n="mmFind">⚡ Tìm đối thủ</button>
+          <button class="btn hidden" id="mmCancelBtn" type="button" data-i18n="mmCancel">✕ Hủy tìm</button>
+        </div>
+        <div class="mm-status hidden" id="mmStatus" role="status" aria-live="polite"></div>
+      </div>
       <div class="lobby-cards">
         <div class="lobby-panel">
           <h3 data-i18n="createRoomH">Tạo phòng mới</h3>

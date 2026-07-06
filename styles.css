@@ -12891,6 +12891,23 @@ body.theme-light .activity-chart { background: linear-gradient(160deg, #ffffff, 
 .lb-wdl { font-size: 0.8rem; color: var(--muted); }
 .lb-empty { color: var(--muted); text-align: center; padding: 14px; font-size: 0.9rem; }
 
+/* ---------- Tìm trận nhanh (matchmaking) ---------- */
+.matchmaking {
+  margin: 0 0 14px;
+  padding: 14px 16px;
+  background: linear-gradient(135deg, rgba(255,212,121,0.10), rgba(255,255,255,0.03));
+  border: 1px solid rgba(255,212,121,0.28);
+  border-radius: 14px;
+}
+.mm-info h3 { margin: 0 0 4px; font-family: var(--font-head); }
+.mm-info p { margin: 0 0 10px; color: var(--muted); font-size: 0.88rem; }
+.mm-controls { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.mm-controls .mm-game-select { flex: 1; min-width: 160px; }
+.mm-status { margin-top: 10px; font-size: 0.9rem; min-height: 1.1em; }
+.mm-status.info { color: var(--accent, #ffd479); }
+.mm-status.err { color: #ff8fa1; }
+.mm-status.ok { color: #7ee0a1; }
+
 /* ---------- Reaction nổi (emoji bay lên khi chơi online) ---------- */
 .reaction-float {
   position: fixed;
