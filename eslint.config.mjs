@@ -53,8 +53,8 @@ export default [
     },
   },
   {
-    // Code chạy trên Node: server, scripts, tests
-    files: ["server.js", "scripts/**/*.js", "tests/**/*.js"],
+    // Code chạy trên Node: server, accounts store, scripts, tests
+    files: ["server.js", "accounts.js", "scripts/**/*.js", "tests/**/*.js"],
     languageOptions: {
       ecmaVersion: 2022,
       sourceType: "commonjs",

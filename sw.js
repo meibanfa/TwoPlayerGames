@@ -4,7 +4,7 @@
      chỉ fallback sang cache khi offline. Tránh tình trạng "kẹt bản cũ".
    - Tài nguyên tĩnh khác (ảnh, icon, font): CACHE-FIRST cho nhanh.
 */
-const CACHE = "tpg-v118";
+const CACHE = "tpg-v119";
 // vi-dict.js (~650KB) KHÔNG nằm trong CORE: nạp trễ khi cần (3 game dùng từ
 // tiếng Việt) và được cache runtime, để lần cài app đầu không tải khối lớn này.
 const CORE = [
@@ -21,6 +21,7 @@ const CORE = [
   "./js/replay-store.js",
   "./js/games-i18n.js",
   "./js/net.js",
+  "./js/account.js",
   "./js/main.js",
 ];
 

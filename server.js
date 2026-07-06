@@ -7,6 +7,7 @@ const path = require("path");
 const crypto = require("crypto");
 const zlib = require("zlib");
 const { WebSocketServer } = require("ws");
+const accounts = require("./accounts");
 
 const PORT = process.env.PORT || 8777;
 const ROOT = path.resolve(__dirname);
@@ -84,6 +85,104 @@ const CSP = [
   "form-action 'self'",
 ].join("; ");
 
+// ---------- HTTP API: tài khoản + đồng bộ hồ sơ ----------
+const MAX_API_BODY = 600 * 1024; // trần body JSON cho /api (đủ cho blob trạng thái 512KB)
+const API_JSON_HEADERS = {
+  "Content-Type": "application/json; charset=utf-8",
+  "X-Content-Type-Options": "nosniff",
+  "Referrer-Policy": "no-referrer",
+  "Cache-Control": "no-store",
+};
+
+// Rate-limit đơn giản theo IP cho các endpoint nhạy cảm (đăng ký / đăng nhập).
+const apiRate = new Map(); // ip -> { start, count }
+function apiRateLimit(ip, limit, windowMs) {
+  const now = Date.now();
+  const cur = apiRate.get(ip);
+  if (!cur || now - cur.start >= windowMs) {
+    apiRate.set(ip, { start: now, count: 1 });
+    return true;
+  }
+  cur.count++;
+  return cur.count <= limit;
+}
+
+function sendJson(res, status, obj) {
+  const body = JSON.stringify(obj);
+  res.writeHead(status, API_JSON_HEADERS);
+  res.end(body);
+}
+
+function readJsonBody(req) {
+  return new Promise((resolve, reject) => {
+    let size = 0;
+    const chunks = [];
+    req.on("data", (c) => {
+      size += c.length;
+      if (size > MAX_API_BODY) { reject(new Error("body_too_large")); req.destroy(); return; }
+      chunks.push(c);
+    });
+    req.on("end", () => {
+      if (!chunks.length) return resolve({});
+      try { resolve(JSON.parse(Buffer.concat(chunks).toString("utf8"))); }
+      catch { reject(new Error("bad_json")); }
+    });
+    req.on("error", reject);
+  });
+}
+
+function bearerToken(req) {
+  const h = req.headers["authorization"] || "";
+  const m = /^Bearer\s+(.+)$/i.exec(h);
+  return m ? m[1].trim() : "";
+}
+
+// Trả về true nếu đã xử lý xong request API.
+async function handleApi(req, res, urlPath) {
+  const ip = (req.socket && req.socket.remoteAddress) || "unknown";
+  const route = urlPath.replace(/\/+$/, "");
+
+  // Chỉ chấp nhận POST/GET cho các endpoint dưới đây.
+  try {
+    if (route === "/api/register" && req.method === "POST") {
+      if (!apiRateLimit("reg:" + ip, 10, 60_000)) return sendJson(res, 429, { error: "rate_limited" });
+      const body = await readJsonBody(req);
+      const r = accounts.register(body.username, body.password);
+      if (r.error) return sendJson(res, 400, r);
+      return sendJson(res, 200, r);
+    }
+    if (route === "/api/login" && req.method === "POST") {
+      if (!apiRateLimit("login:" + ip, 20, 60_000)) return sendJson(res, 429, { error: "rate_limited" });
+      const body = await readJsonBody(req);
+      const r = accounts.login(body.username, body.password);
+      if (r.error) return sendJson(res, 401, r);
+      return sendJson(res, 200, r);
+    }
+    if (route === "/api/logout" && req.method === "POST") {
+      accounts.logout(bearerToken(req));
+      return sendJson(res, 200, { ok: true });
+    }
+    if (route === "/api/state" && req.method === "GET") {
+      const r = accounts.getState(bearerToken(req));
+      if (r.error) return sendJson(res, 401, r);
+      return sendJson(res, 200, r);
+    }
+    if (route === "/api/state" && req.method === "POST") {
+      const body = await readJsonBody(req);
+      const r = accounts.putState(bearerToken(req), body.state);
+      if (r.error) return sendJson(res, r.error === "unauthorized" ? 401 : 400, r);
+      return sendJson(res, 200, r);
+    }
+    // Không khớp endpoint nào -> 404 JSON.
+    sendJson(res, 404, { error: "not_found" });
+  } catch (e) {
+    const msg = e && e.message;
+    if (msg === "body_too_large") return sendJson(res, 413, { error: "body_too_large" });
+    return sendJson(res, 400, { error: "bad_request" });
+  }
+  return true;
+}
+
 // ---------- HTTP: phục vụ file tĩnh ----------
 const server = http.createServer((req, res) => {
   let urlPath;
@@ -93,6 +192,13 @@ const server = http.createServer((req, res) => {
     res.writeHead(400, { "Content-Type": "text/plain; charset=utf-8" });
     return res.end("Bad Request");
   }
+
+  // Định tuyến API trước khi phục vụ file tĩnh.
+  if (urlPath === "/api" || urlPath.startsWith("/api/")) {
+    handleApi(req, res, urlPath);
+    return;
+  }
+
   if (urlPath === "/") urlPath = "/index.html";
 
   // chặn path traversal

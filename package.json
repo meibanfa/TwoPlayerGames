@@ -9,9 +9,9 @@
     "lint": "eslint .",
     "smoke": "node scripts/smoke-test.js",
     "test:unit": "node --test tests/games.test.js tests/stats.test.js tests/i18n.test.js tests/i18n-runtime.test.js tests/i18n-source-guard.test.js tests/replay.test.js tests/replay-store.test.js tests/integrity.test.js tests/games-coverage.test.js",
-    "test:online": "node tests/reconnect-it.js && node tests/publicrooms-it.js && node tests/password-it.js && node tests/chat-it.js && node tests/online-sync-it.js && node tests/origin-it.js && node tests/security-it.js",
+    "test:online": "node tests/reconnect-it.js && node tests/publicrooms-it.js && node tests/password-it.js && node tests/chat-it.js && node tests/online-sync-it.js && node tests/origin-it.js && node tests/security-it.js && node tests/accounts-it.js",
     "test:selfplay": "node tests/selfplay-it.js",
-    "test": "node scripts/smoke-test.js && node --test tests/games.test.js tests/stats.test.js tests/i18n.test.js tests/i18n-runtime.test.js tests/i18n-source-guard.test.js tests/replay.test.js tests/replay-store.test.js tests/integrity.test.js tests/games-coverage.test.js && node tests/reconnect-it.js && node tests/publicrooms-it.js && node tests/password-it.js && node tests/chat-it.js && node tests/online-sync-it.js && node tests/origin-it.js && node tests/security-it.js"
+    "test": "node scripts/smoke-test.js && node --test tests/games.test.js tests/stats.test.js tests/i18n.test.js tests/i18n-runtime.test.js tests/i18n-source-guard.test.js tests/replay.test.js tests/replay-store.test.js tests/integrity.test.js tests/games-coverage.test.js && node tests/reconnect-it.js && node tests/publicrooms-it.js && node tests/password-it.js && node tests/chat-it.js && node tests/online-sync-it.js && node tests/origin-it.js && node tests/security-it.js && node tests/accounts-it.js"
   },
   "engines": {
     "node": ">=20"

@@ -10,6 +10,9 @@ npm-debug.log*
 Thumbs.db
 .env
 
+# Dữ liệu tài khoản (server-side, không commit)
+data/
+
 # Editor
 .vscode/
 .idea/

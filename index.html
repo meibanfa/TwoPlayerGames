@@ -96,6 +96,36 @@
           <div class="avatar-picker" id="avatarPicker"></div>
         </div>
       </div>
+
+      <!-- Tài khoản: đăng nhập để đồng bộ hồ sơ giữa các thiết bị -->
+      <div class="account-box" id="accountBox">
+        <div class="account-signedout" id="accountSignedOut">
+          <h3 class="profile-h account-h" data-i18n="accountH">☁️ Tài khoản &amp; đồng bộ</h3>
+          <p class="account-hint" data-i18n="accountHint">Đăng nhập để lưu hồ sơ, thống kê và thành tích trên nhiều thiết bị.</p>
+          <div class="account-form">
+            <input id="accUser" class="player-name-input" maxlength="24" autocomplete="username" data-i18n-ph="accUserPh" placeholder="Tên đăng nhập" />
+            <input id="accPass" class="player-name-input" type="password" maxlength="128" autocomplete="current-password" data-i18n-ph="accPassPh" placeholder="Mật khẩu" />
+            <div class="account-actions">
+              <button class="btn small primary" id="accLoginBtn" type="button" data-i18n="accLogin">Đăng nhập</button>
+              <button class="btn small" id="accRegisterBtn" type="button" data-i18n="accRegister">Đăng ký</button>
+            </div>
+            <div class="account-msg" id="accMsg" role="status" aria-live="polite"></div>
+          </div>
+        </div>
+        <div class="account-signedin hidden" id="accountSignedIn">
+          <h3 class="profile-h account-h" data-i18n="accountH">☁️ Tài khoản &amp; đồng bộ</h3>
+          <p class="account-status">
+            <span data-i18n="accSignedInAs">Đang đăng nhập:</span>
+            <strong id="accWho"></strong>
+          </p>
+          <div class="account-actions">
+            <button class="btn small" id="accSyncBtn" type="button" data-i18n="accSync">🔄 Đồng bộ ngay</button>
+            <button class="btn small danger" id="accLogoutBtn" type="button" data-i18n="accLogout">Đăng xuất</button>
+          </div>
+          <div class="account-msg" id="accMsg2" role="status" aria-live="polite"></div>
+        </div>
+      </div>
+
       <div class="profile-stats" id="profileStats"></div>
       <h3 class="profile-h" data-i18n="leaderboardH">🏆 Bảng xếp hạng game của bạn</h3>
       <div class="lead-list" id="leadList"></div>
@@ -464,6 +494,7 @@
   <script defer src="js/games/amazons.js"></script>
   <script defer src="js/games/breakthrough.js"></script>
   <script defer src="js/games/coganh.js"></script>
+  <script defer src="js/account.js"></script>
   <script defer src="js/main.js"></script>
   <script defer src="js/sw-register.js"></script>
 </body>

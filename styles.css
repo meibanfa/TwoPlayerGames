@@ -12845,6 +12845,23 @@ body.theme-light .activity-chart { background: linear-gradient(160deg, #ffffff, 
 .btn.danger { border-color: rgba(255,93,115,0.5); color: #ff8fa1; }
 .btn.danger:hover { background: var(--p1); color: #fff; box-shadow: 0 6px 18px rgba(255,93,115,0.35); }
 
+/* ---------- Tài khoản & đồng bộ ---------- */
+.account-box {
+  border: 1px solid var(--line, rgba(255,255,255,0.12));
+  border-radius: 14px;
+  padding: 14px 16px;
+  margin-top: 8px;
+  background: var(--card2, rgba(255,255,255,0.03));
+}
+.account-h { margin-top: 0; }
+.account-hint { color: var(--muted); font-size: 0.85rem; margin: 4px 0 10px; }
+.account-form { display: flex; flex-direction: column; gap: 8px; }
+.account-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.account-status { margin: 4px 0 10px; display: flex; align-items: center; gap: 8px; }
+.account-msg { font-size: 0.85rem; min-height: 1.1em; }
+.account-msg.ok { color: #7ee0a1; }
+.account-msg.err { color: #ff8fa1; }
+
 /* ---------- Reaction nổi (emoji bay lên khi chơi online) ---------- */
 .reaction-float {
   position: fixed;
