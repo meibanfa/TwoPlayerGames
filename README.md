@@ -28,6 +28,8 @@ Bộ trò chơi đối kháng cho 2 người chơi, hỗ trợ **chơi chung m�
 - **Tự kết nối lại** khi rớt mạng (giữ phòng 45 giây + phát lại nước đi) và **xem lại ván (replay)** online
 - **Khung chat** trong phòng online kèm các câu nhắn nhanh
 - **Trang Hồ sơ**: đổi tên + 24 avatar, thống kê, **12+ thành tích**, **bảng xếp hạng** game, **lịch sử ván đấu** (có nút **▶ Xem lại** để phát lại trọn ván đã lưu) + biểu đồ hoạt động 14 ngày
+- **Tài khoản & đồng bộ đám mây**: đăng ký/đăng nhập (mật khẩu băm `scrypt`) để lưu hồ sơ, thống kê, thành tích và đồng bộ giữa nhiều thiết bị (kiểu "mới nhất thắng")
+- **Bảng xếp hạng online theo ELO**: mỗi ván online giữa hai người đã đăng nhập được chấm ELO (theo từng game + tổng); bảng xếp hạng toàn cục lọc theo game. Server chỉ tính khi **hai máy báo cáo kết quả khớp nhau** (chống gian lận cơ bản)
 - **Thử thách hằng ngày** (daily challenge) với chuỗi ngày liên tiếp
 - **Giao diện "cozy" tông gỗ ấm / giấy ngà** (warm wood & paper): mặc định nền gỗ espresso chữ kem sáng, nút 🌙 chuyển sang chế độ giấy sáng; khu vực chơi luôn giữ tông gỗ tối để bàn cờ dễ đọc. Font serif Fraunces + Nunito Sans.
 - **6 tông màu** đổi nhanh qua nút 🎨 và **nhạc nền + chỉnh âm lượng** (tự tắt khi rời tab)
@@ -195,6 +197,12 @@ Client ↔ server trao đổi message JSON qua WebSocket: `create`, `join`, `sta
 `rejoin` (kết nối lại sau khi rớt mạng). Khi tạo phòng có thể kèm `password` (tùy chọn) để
 tạo **phòng riêng tư**; `join` phải gửi đúng mật khẩu mới vào được. Các game được thiết kế
 tất định (dùng RNG có hạt giống chung) nên hai máy luôn đồng bộ trạng thái.
+
+Khi tạo/vào phòng, client có thể kèm `auth` (token tài khoản). Nếu **cả hai** người chơi đều
+đăng nhập thì phòng là **ván xếp hạng** (`ranked`): kết thúc ván, mỗi bên gửi `reportResult`;
+server chỉ tính **ELO** khi hai báo cáo **khớp nhau** (chống gian lận cơ bản) rồi gửi lại
+`rated` kèm điểm mới. Đồng bộ hồ sơ + bảng xếp hạng dùng HTTP API riêng (`/api/register`,
+`/api/login`, `/api/logout`, `/api/state`, `/api/leaderboard`, `/api/rating`).
 
 ## ⚠️ Lưu ý
 

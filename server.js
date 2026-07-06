@@ -137,6 +137,18 @@ function bearerToken(req) {
   return m ? m[1].trim() : "";
 }
 
+// Đọc query string đơn giản (?game=gomoku&limit=20).
+function parseQuery(url) {
+  const out = {};
+  const qs = String(url || "").split("?")[1];
+  if (!qs) return out;
+  for (const pair of qs.split("&")) {
+    const [k, v] = pair.split("=");
+    if (k) out[decodeURIComponent(k)] = v === undefined ? "" : decodeURIComponent(v);
+  }
+  return out;
+}
+
 // Trả về true nếu đã xử lý xong request API.
 async function handleApi(req, res, urlPath) {
   const ip = (req.socket && req.socket.remoteAddress) || "unknown";
@@ -171,6 +183,16 @@ async function handleApi(req, res, urlPath) {
       const body = await readJsonBody(req);
       const r = accounts.putState(bearerToken(req), body.state);
       if (r.error) return sendJson(res, r.error === "unauthorized" ? 401 : 400, r);
+      return sendJson(res, 200, r);
+    }
+    if (route === "/api/leaderboard" && req.method === "GET") {
+      const q = parseQuery(req.url);
+      const r = accounts.leaderboard(q.game || "overall", q.limit);
+      return sendJson(res, 200, r);
+    }
+    if (route === "/api/rating" && req.method === "GET") {
+      const r = accounts.getRating(bearerToken(req));
+      if (r.error) return sendJson(res, 401, r);
       return sendJson(res, 200, r);
     }
     // Không khớp endpoint nào -> 404 JSON.
@@ -457,7 +479,8 @@ wss.on("connection", (ws, req) => {
         const playerName = cleanPlayerName(msg.playerName, "Người chơi 1");
         const password = cleanPassword(msg.password);
         const token0 = makeToken();
-        rooms.set(code, { players: [ws, null], names: [playerName, null], tokens: [token0, null], history: [], dcTimers: [null, null], gameId: msg.gameId, seed, firstSeat, round: 1, restartVotes: new Set(), options, public: !!msg.public });
+        const acct0 = accounts.userByToken(msg.auth);
+        rooms.set(code, { players: [ws, null], names: [playerName, null], tokens: [token0, null], accounts: [acct0 ? acct0.username : null, null], results: [null, null], history: [], dcTimers: [null, null], gameId: msg.gameId, seed, firstSeat, round: 1, restartVotes: new Set(), options, public: !!msg.public });
         if (password) {
           const room = rooms.get(code);
           room.passwordSalt = crypto.randomBytes(8).toString("hex");
@@ -483,13 +506,19 @@ wss.on("connection", (ws, req) => {
         const token1 = makeToken();
         room.tokens = room.tokens || [null, null];
         room.tokens[1] = token1;
+        const acct1 = accounts.userByToken(msg.auth);
+        room.accounts = room.accounts || [null, null];
+        room.accounts[1] = acct1 ? acct1.username : null;
+        room.results = [null, null]; // reset báo cáo kết quả cho ván mới
         room.history = [];
         ws.roomCode = code;
         ws.seat = 1;
-        send(ws, "joined", { code, seat: 1, token: token1, gameId: room.gameId, seed: room.seed, firstSeat: room.firstSeat, round: room.round, options: room.options, playerNames: room.names });
+        const ranked = !!(room.accounts && room.accounts[0] && room.accounts[1] && room.accounts[0] !== room.accounts[1]);
+        room.ranked = ranked;
+        send(ws, "joined", { code, seat: 1, token: token1, gameId: room.gameId, seed: room.seed, firstSeat: room.firstSeat, round: room.round, options: room.options, playerNames: room.names, ranked });
         // báo cho cả hai bắt đầu (kèm options của chủ phòng)
-        send(room.players[0], "start", { code, seat: 0, gameId: room.gameId, seed: room.seed, firstSeat: room.firstSeat, round: room.round, options: room.options, playerNames: room.names });
-        send(room.players[1], "start", { code, seat: 1, gameId: room.gameId, seed: room.seed, firstSeat: room.firstSeat, round: room.round, options: room.options, playerNames: room.names });
+        send(room.players[0], "start", { code, seat: 0, gameId: room.gameId, seed: room.seed, firstSeat: room.firstSeat, round: room.round, options: room.options, playerNames: room.names, ranked });
+        send(room.players[1], "start", { code, seat: 1, gameId: room.gameId, seed: room.seed, firstSeat: room.firstSeat, round: room.round, options: room.options, playerNames: room.names, ranked });
         break;
       }
 
@@ -522,7 +551,8 @@ wss.on("connection", (ws, req) => {
         room.firstSeat = typeof room.firstSeat === "number" ? 1 - room.firstSeat : (Math.random() < 0.5 ? 0 : 1);
         room.restartVotes.clear();
         room.history = [];
-        room.players.forEach((p, i) => send(p, "restart", { code: ws.roomCode, gameId: room.gameId, seed, seat: i, firstSeat: room.firstSeat, round: room.round, options: room.options, playerNames: room.names }));
+        room.results = [null, null]; // ván mới -> chờ báo cáo kết quả mới
+        room.players.forEach((p, i) => send(p, "restart", { code: ws.roomCode, gameId: room.gameId, seed, seat: i, firstSeat: room.firstSeat, round: room.round, options: room.options, playerNames: room.names, ranked: !!(room.accounts && room.accounts[0] && room.accounts[1]) }));
         break;
       }
 
@@ -541,6 +571,40 @@ wss.on("connection", (ws, req) => {
         const emoji = String(msg.emoji || "").slice(0, 8);
         if (!emoji) return;
         send(otherPlayer(room, ws), "react", { emoji });
+        break;
+      }
+
+      case "reportResult": {
+        if (!rateLimit(ws, "report", 10, 30_000)) return;
+        const room = roomFor(ws);
+        if (!room) return;
+        if (!room.ranked || !room.accounts || !room.accounts[0] || !room.accounts[1]) return; // chỉ tính khi cả hai đăng nhập
+        // Kết quả theo góc nhìn ghế của người báo: "win" | "lose" | "draw".
+        const outcome = msg.outcome;
+        if (outcome !== "win" && outcome !== "lose" && outcome !== "draw") return;
+        const round = Number(msg.round) || room.round || 1;
+        room.results = room.results || [null, null];
+        // Gắn kèm round để tránh nhầm báo cáo của ván trước với ván sau.
+        room.results[ws.seat] = { outcome, round };
+        const r0 = room.results[0];
+        const r1 = room.results[1];
+        if (!r0 || !r1 || r0.round !== r1.round) return; // chờ đủ hai báo cáo cùng ván
+        if (room.ratedRound === r0.round) return; // đã tính cho ván này rồi
+
+        // Quy về kết quả theo ghế 0. Hai báo cáo phải NHẤT QUÁN mới tính.
+        // seat0 thắng khi: seat0 báo "win" và seat1 báo "lose".
+        let result = null;
+        if (r0.outcome === "draw" && r1.outcome === "draw") result = "draw";
+        else if (r0.outcome === "win" && r1.outcome === "lose") result = "a";
+        else if (r0.outcome === "lose" && r1.outcome === "win") result = "b";
+        if (!result) { room.results = [null, null]; return; } // báo cáo mâu thuẫn -> bỏ qua
+
+        room.ratedRound = r0.round;
+        const rec = accounts.recordMatch(room.gameId, room.accounts[0], room.accounts[1], result);
+        if (rec && rec.ok) {
+          send(room.players[0], "rated", { gameId: room.gameId, overall: rec.a.overall, game: rec.a.game, delta: rec.a.delta, result: result === "draw" ? "draw" : (result === "a" ? "win" : "lose") });
+          send(room.players[1], "rated", { gameId: room.gameId, overall: rec.b.overall, game: rec.b.game, delta: rec.b.delta, result: result === "draw" ? "draw" : (result === "b" ? "win" : "lose") });
+        }
         break;
       }
 

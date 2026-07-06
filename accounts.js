@@ -75,6 +75,7 @@ function timingEqual(a, b) {
 
 // ---------- Kiểm tra đầu vào ----------
 function validUsername(u) { return typeof u === "string" && USERNAME_RE.test(u); }
+function isValidGameId(v) { return typeof v === "string" && /^[a-z0-9_-]{1,40}$/i.test(v); }
 function validPassword(p) {
   return typeof p === "string" && p.length >= MIN_PASSWORD && p.length <= MAX_PASSWORD;
 }
@@ -167,12 +168,118 @@ function putState(token, state) {
   return { ok: true, stateUpdatedAt: u.stateUpdatedAt };
 }
 
+// ---------- ELO / bảng xếp hạng ----------
+const ELO_START = 1200;
+const ELO_K = 32;
+const ELO_MIN = 100;
+
+// Kỳ vọng thắng của A trước B theo công thức ELO chuẩn.
+function expectedScore(ra, rb) {
+  return 1 / (1 + Math.pow(10, (rb - ra) / 400));
+}
+// Rating mới sau một ván. score: 1 thắng, 0.5 hòa, 0 thua.
+function newRating(cur, expected, score) {
+  const next = Math.round(cur + ELO_K * (score - expected));
+  return Math.max(ELO_MIN, next);
+}
+
+// Bảo đảm user có cấu trúc rating; trả về object rating của user.
+function ensureRatings(u) {
+  if (!u.rating) {
+    u.rating = { overall: ELO_START, games: {}, wins: 0, losses: 0, draws: 0, played: 0 };
+  }
+  if (typeof u.rating.overall !== "number") u.rating.overall = ELO_START;
+  if (!u.rating.games || typeof u.rating.games !== "object") u.rating.games = {};
+  return u.rating;
+}
+function gameRating(r, gameId) {
+  if (typeof r.games[gameId] !== "number") r.games[gameId] = ELO_START;
+  return r.games[gameId];
+}
+
+// Ghi nhận kết quả một ván online giữa hai tài khoản đã đăng nhập.
+// result: "a" (A thắng), "b" (B thắng), "draw".
+// Trả về rating mới của từng bên (overall + theo game) để báo lại client.
+function recordMatch(gameId, userAName, userBName, result) {
+  load();
+  if (!isValidGameId(gameId)) return { error: "invalid_game" };
+  const a = db.users[String(userAName || "").toLowerCase()];
+  const b = db.users[String(userBName || "").toLowerCase()];
+  if (!a || !b || a === b) return { error: "invalid_players" };
+  if (result !== "a" && result !== "b" && result !== "draw") return { error: "invalid_result" };
+
+  const ra = ensureRatings(a);
+  const rb = ensureRatings(b);
+  const scoreA = result === "a" ? 1 : result === "draw" ? 0.5 : 0;
+  const scoreB = 1 - scoreA;
+
+  // Cập nhật overall.
+  const ea = expectedScore(ra.overall, rb.overall);
+  const eb = 1 - ea;
+  ra.overall = newRating(ra.overall, ea, scoreA);
+  rb.overall = newRating(rb.overall, eb, scoreB);
+
+  // Cập nhật rating theo game (giữ lại giá trị cũ để tính delta).
+  const ga = gameRating(ra, gameId);
+  const gb = gameRating(rb, gameId);
+  const ega = expectedScore(ga, gb);
+  ra.games[gameId] = newRating(ga, ega, scoreA);
+  rb.games[gameId] = newRating(gb, 1 - ega, scoreB);
+
+  // Thống kê thắng/thua/hòa.
+  ra.played++; rb.played++;
+  if (result === "draw") { ra.draws++; rb.draws++; }
+  else if (result === "a") { ra.wins++; rb.losses++; }
+  else { ra.losses++; rb.wins++; }
+
+  persist();
+  return {
+    ok: true,
+    a: { username: a.username, overall: ra.overall, game: ra.games[gameId], delta: ra.games[gameId] - ga },
+    b: { username: b.username, overall: rb.overall, game: rb.games[gameId], delta: rb.games[gameId] - gb },
+  };
+}
+
+// Bảng xếp hạng: theo game cụ thể hoặc overall (gameId rỗng/"overall").
+function leaderboard(gameId, limit) {
+  load();
+  const n = Math.max(1, Math.min(100, Number(limit) || 20));
+  const perGame = gameId && gameId !== "overall" && isValidGameId(gameId);
+  const rows = [];
+  for (const key of Object.keys(db.users)) {
+    const u = db.users[key];
+    if (!u.rating || !u.rating.played) continue;
+    const rating = perGame
+      ? (typeof u.rating.games[gameId] === "number" ? u.rating.games[gameId] : null)
+      : u.rating.overall;
+    if (rating === null) continue;
+    rows.push({
+      username: u.username,
+      rating,
+      wins: u.rating.wins || 0,
+      losses: u.rating.losses || 0,
+      draws: u.rating.draws || 0,
+      played: u.rating.played || 0,
+    });
+  }
+  rows.sort((x, y) => (y.rating - x.rating) || (y.played - x.played));
+  return { rows: rows.slice(0, n) };
+}
+
+// Lấy rating của một user theo token (cho trang hồ sơ).
+function getRating(token) {
+  const u = userByToken(token);
+  if (!u) return { error: "unauthorized" };
+  const r = ensureRatings(u);
+  return { username: u.username, overall: r.overall, games: r.games, wins: r.wins, losses: r.losses, draws: r.draws, played: r.played };
+}
+
 // Cho test: đặt lại trạng thái trong bộ nhớ (không đụng file).
 function _reset() { db = { users: {} }; loaded = true; }
 
 module.exports = {
   register, login, logout, getState, putState, userByToken,
-  validUsername, validPassword,
-  MAX_STATE_BYTES, MIN_PASSWORD,
+  validUsername, validPassword, recordMatch, leaderboard, getRating,
+  MAX_STATE_BYTES, MIN_PASSWORD, ELO_START,
   _reset, _file: DB_FILE,
 };

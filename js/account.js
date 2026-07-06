@@ -156,9 +156,26 @@ window.Account = (function () {
     return { ok: true };
   }
 
+  // Lấy bảng xếp hạng online (không cần đăng nhập).
+  async function fetchLeaderboard(gameId, limit) {
+    const q = "?game=" + encodeURIComponent(gameId || "overall") + "&limit=" + (Number(limit) || 20);
+    const r = await api("/api/leaderboard" + q, { method: "GET" });
+    if (!r.ok) return { error: r.data.error || "error" };
+    return { ok: true, rows: r.data.rows || [] };
+  }
+
+  // Lấy rating của chính mình (cần đăng nhập).
+  async function fetchRating() {
+    if (!isSignedIn()) return { error: "unauthorized" };
+    const r = await api("/api/rating", { method: "GET" });
+    if (!r.ok) return { error: r.data.error || "error" };
+    return { ok: true, rating: r.data };
+  }
+
   return {
     onChange, isSignedIn, username, state, touch,
     register, login, logout, push, pull,
+    leaderboard: fetchLeaderboard, rating: fetchRating,
   };
 })();
 
@@ -278,6 +295,75 @@ window.Account = (function () {
     if (syncBtn) syncBtn.addEventListener("click", doSync);
     if (logoutBtn) logoutBtn.addEventListener("click", doLogout);
     if (passInput) passInput.addEventListener("keydown", (e) => { if (e.key === "Enter") doAuth("login"); });
+
+    // ---------- Bảng xếp hạng online (ELO toàn cục) ----------
+    const lbGameSelect = $("lbGameSelect");
+    const lbRefreshBtn = $("lbRefreshBtn");
+    const lbList = $("lbList");
+    const eloRow = $("accEloRow");
+    const eloVal = $("accElo");
+
+    function esc(s) {
+      return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;" }[c]));
+    }
+
+    // Nạp danh sách game vào ô chọn (Tổng + từng game có tên).
+    function fillGameSelect() {
+      if (!lbGameSelect) return;
+      const games = (window.GameRegistry && window.GameRegistry.games) || [];
+      const opts = ["<option value=\"overall\">" + esc(T("lbAll")) + "</option>"];
+      games.slice().sort((a, b) => String(a.name).localeCompare(String(b.name))).forEach((g) => {
+        opts.push("<option value=\"" + esc(g.id) + "\">" + esc(g.name || g.id) + "</option>");
+      });
+      lbGameSelect.innerHTML = opts.join("");
+    }
+
+    async function loadLeaderboard() {
+      if (!lbList) return;
+      lbList.innerHTML = "<div class=\"lb-empty\">" + esc(T("lbLoading")) + "</div>";
+      const game = lbGameSelect ? lbGameSelect.value : "overall";
+      const r = await window.Account.leaderboard(game, 20);
+      if (r.error || !r.rows) { lbList.innerHTML = "<div class=\"lb-empty\">" + esc(T("lbErr")) + "</div>"; return; }
+      if (!r.rows.length) { lbList.innerHTML = "<div class=\"lb-empty\">" + esc(T("lbEmpty")) + "</div>"; return; }
+      const me = window.Account.username().toLowerCase();
+      const medals = ["🥇", "🥈", "🥉"];
+      lbList.innerHTML = r.rows.map((row, i) => {
+        const rank = medals[i] || (i + 1) + ".";
+        const mine = String(row.username).toLowerCase() === me ? " lb-me" : "";
+        return "<div class=\"lb-item" + mine + "\">" +
+          "<span class=\"lb-rank\">" + rank + "</span>" +
+          "<span class=\"lb-name\">" + esc(row.username) + "</span>" +
+          "<span class=\"lb-elo\">" + row.rating + "</span>" +
+          "<span class=\"lb-wdl\">" + row.wins + "/" + row.draws + "/" + row.losses + "</span>" +
+          "</div>";
+      }).join("");
+    }
+
+    // Cập nhật ELO của chính mình trong khối tài khoản.
+    async function refreshMyElo() {
+      if (!eloRow || !eloVal) return;
+      if (!window.Account.isSignedIn()) { eloRow.classList.add("hidden"); return; }
+      const r = await window.Account.rating();
+      if (r.error) { eloRow.classList.add("hidden"); return; }
+      eloVal.textContent = r.overall + " (" + (r.wins || 0) + "/" + (r.draws || 0) + "/" + (r.losses || 0) + ")";
+      eloRow.classList.remove("hidden");
+    }
+
+    if (lbGameSelect) lbGameSelect.addEventListener("change", loadLeaderboard);
+    if (lbRefreshBtn) lbRefreshBtn.addEventListener("click", () => { loadLeaderboard(); refreshMyElo(); });
+
+    // Nạp lần đầu khi có registry sẵn sàng (main.js nạp game qua defer cùng lúc).
+    function initLeaderboard() {
+      fillGameSelect();
+      loadLeaderboard();
+      refreshMyElo();
+    }
+    if (window.GameRegistry && window.GameRegistry.games && window.GameRegistry.games.length) initLeaderboard();
+    else window.addEventListener("load", initLeaderboard, { once: true });
+    if (window.I18n && window.I18n.onChange) window.I18n.onChange(() => { fillGameSelect(); });
+
+    // Khi trạng thái đăng nhập đổi (login/logout) -> cập nhật ELO của mình.
+    window.Account.onChange(refreshMyElo);
 
     window.Account.onChange(render);
     render();

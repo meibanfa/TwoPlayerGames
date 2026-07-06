@@ -12861,6 +12861,35 @@ body.theme-light .activity-chart { background: linear-gradient(160deg, #ffffff, 
 .account-msg { font-size: 0.85rem; min-height: 1.1em; }
 .account-msg.ok { color: #7ee0a1; }
 .account-msg.err { color: #ff8fa1; }
+.account-elo { font-size: 0.9rem; }
+.account-elo strong { color: var(--accent, #ffd479); }
+
+/* ---------- Bảng xếp hạng online (ELO) ---------- */
+.lb-box {
+  background: var(--card, rgba(255,255,255,0.04));
+  border: 1px solid var(--line, rgba(255,255,255,0.12));
+  border-radius: 14px;
+  padding: 14px 16px;
+  margin: 12px 0;
+}
+.lb-controls { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 8px 0 10px; }
+.lb-controls .option-select { flex: 1; min-width: 140px; }
+.lb-list { display: flex; flex-direction: column; gap: 4px; }
+.lb-item {
+  display: grid;
+  grid-template-columns: 2.2em 1fr auto auto;
+  gap: 10px;
+  align-items: center;
+  padding: 7px 10px;
+  border-radius: 10px;
+  background: rgba(255,255,255,0.03);
+}
+.lb-item.lb-me { background: rgba(255,212,121,0.14); outline: 1px solid rgba(255,212,121,0.4); }
+.lb-rank { font-weight: 700; text-align: center; }
+.lb-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lb-elo { font-family: var(--font-head); font-weight: 700; color: var(--accent, #ffd479); }
+.lb-wdl { font-size: 0.8rem; color: var(--muted); }
+.lb-empty { color: var(--muted); text-align: center; padding: 14px; font-size: 0.9rem; }
 
 /* ---------- Reaction nổi (emoji bay lên khi chơi online) ---------- */
 .reaction-float {

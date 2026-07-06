@@ -185,6 +185,11 @@
   let lastWinner = -1;         // người thắng gần nhất (theo incScore)
   let lastWinSummary = "";     // tóm tắt kết quả gần nhất để chia sẻ
 
+  // Token tài khoản (nếu đã đăng nhập) để server nhận diện người chơi cho ELO.
+  function authToken() {
+    try { return localStorage.getItem("tpg_auth_token") || ""; } catch (e) { return ""; }
+  }
+
   // ----- Replay (xem lại ván online) -----
   let replayMoves = [];        // chuỗi nước đi của ván online hiện tại
   let replaySeed = 0;          // seed của ván để dựng lại
@@ -275,6 +280,7 @@
             recordHistory(selectedGame.id, kind === "draw" ? "draw" : "win", lastWinner);
             recordOutcomeFlags(kind);
             if (selectedGame.id === dailyGameId()) markDailyDone();
+            reportRankedResult(kind);
           }
           // Best-of-N (chỉ chung máy / đấu máy): cộng điểm trận, quyết định còn đấu tiếp không
           let matchInfo = null;
@@ -1264,7 +1270,16 @@
       playerNames,
       roomNames: normalizedRoomNames,
       token: sessionToken,
+      ranked: !!m.ranked || (online ? online.ranked : false),
     };
+  }
+
+  // Báo kết quả ván online cho server để tính ELO (chỉ khi phòng "ranked").
+  // outcome theo góc nhìn người chơi cục bộ: "win" | "lose" | "draw".
+  function reportRankedResult(kind) {
+    if (!online || !online.ranked) return;
+    const outcome = kind === "win" ? "win" : kind === "lose" ? "lose" : "draw";
+    Net.send("reportResult", { outcome, round: online.round || 1 });
   }
 
   function updateRestartButtons() {
@@ -1731,7 +1746,7 @@
     currentOptions = readOptions(lobbySelectedGame, "lobby_opt_");
     const playerName = readPlayerName(el.createNameInput, tt("player1"));
     setLobbyState(tt("creatingRoom"), "waiting");
-    Net.send("create", { gameId: lobbySelectedGame.id, options: currentOptions, playerName, public: el.publicToggle ? el.publicToggle.checked : true, password: el.createPwInput ? el.createPwInput.value : "" });
+    Net.send("create", { gameId: lobbySelectedGame.id, options: currentOptions, playerName, public: el.publicToggle ? el.publicToggle.checked : true, password: el.createPwInput ? el.createPwInput.value : "", auth: authToken() });
   });
 
   el.joinRoomBtn.addEventListener("click", async () => {
@@ -1744,7 +1759,7 @@
     if (!(await ensureConnected())) return;
     const playerName = readPlayerName(el.joinNameInput, tt("player2"));
     setLobbyState(tt("joiningRoom"), "waiting");
-    Net.send("join", { code, playerName, password: el.joinPwInput ? el.joinPwInput.value : "" });
+    Net.send("join", { code, playerName, password: el.joinPwInput ? el.joinPwInput.value : "", auth: authToken() });
   });
 
   el.copyCodeBtn.addEventListener("click", () => {
@@ -1809,7 +1824,7 @@
       if (!password) { setLobbyState("", ""); return; }
     }
     setLobbyState(tt("joiningRoom"), "waiting");
-    Net.send("join", { code, playerName, password });
+    Net.send("join", { code, playerName, password, auth: authToken() });
   }
 
   function startRoomPolling() {
@@ -1988,6 +2003,18 @@
 
   Net.on("react", (m) => {
     if (m && m.emoji) floatReaction(m.emoji);
+  });
+
+  // Server đã tính ELO cho ván online (cả hai đã đăng nhập + báo cáo khớp).
+  Net.on("rated", (m) => {
+    if (!m || typeof m.game !== "number") return;
+    const delta = typeof m.delta === "number" ? m.delta : null;
+    const sign = delta === null ? "" : (delta >= 0 ? "+" + delta : String(delta));
+    const txt = tt("eloRated")
+      .replace("{elo}", m.game)
+      .replace("{delta}", sign ? " (" + sign + ")" : "");
+    addChatMessage(txt, "sys");
+    showToast(txt);
   });
 
   // ====================== Chat (chỉ online) ======================

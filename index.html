@@ -123,7 +123,22 @@
             <button class="btn small danger" id="accLogoutBtn" type="button" data-i18n="accLogout">Đăng xuất</button>
           </div>
           <div class="account-msg" id="accMsg2" role="status" aria-live="polite"></div>
+          <p class="account-status account-elo hidden" id="accEloRow">
+            <span data-i18n="accYourElo">ELO của bạn:</span>
+            <strong id="accElo">—</strong>
+          </p>
         </div>
+      </div>
+
+      <!-- Bảng xếp hạng online (ELO toàn cục) -->
+      <div class="lb-box" id="lbBox">
+        <h3 class="profile-h" data-i18n="lbTitle">🌐 Bảng xếp hạng online</h3>
+        <p class="account-hint" data-i18n="lbHint">Xếp hạng theo ELO từ các ván online giữa những người đã đăng nhập.</p>
+        <div class="lb-controls">
+          <select class="option-select" id="lbGameSelect"></select>
+          <button class="btn small" id="lbRefreshBtn" type="button" data-i18n="lbRefresh">🔄 Làm mới</button>
+        </div>
+        <div class="lb-list" id="lbList"></div>
       </div>
 
       <div class="profile-stats" id="profileStats"></div>
