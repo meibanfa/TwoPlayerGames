@@ -2,6 +2,7 @@
 const fs = require("fs");
 const http = require("http");
 const net = require("net");
+const os = require("os");
 const path = require("path");
 const { spawn, spawnSync } = require("child_process");
 const WebSocket = require("ws");
@@ -197,9 +198,10 @@ function waitForMessage(ws, type) {
 
 async function runServerSmokeTest() {
   const port = await getFreePort();
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "tpg-smoke-"));
   const child = spawn(process.execPath, ["server.js"], {
     cwd: ROOT,
-    env: { ...process.env, PORT: String(port) },
+    env: { ...process.env, PORT: String(port), DATA_DIR: dataDir },
     stdio: ["ignore", "pipe", "pipe"],
   });
   const logs = [];
@@ -212,6 +214,10 @@ async function runServerSmokeTest() {
     const home = await httpGet(port, "/");
     assert(home.statusCode === 200, `GET / returned ${home.statusCode}`);
     assert(home.body.includes("js/main.js"), "GET / did not return index.html");
+
+    const health = await httpGet(port, "/health");
+    assert(health.statusCode === 200, `GET /health returned ${health.statusCode}`);
+    assert(JSON.parse(health.body).ok === true, "GET /health did not report healthy storage");
 
     const traversal = await httpGet(port, "/..%2fpackage.json");
     assert(traversal.statusCode === 403, `path traversal probe returned ${traversal.statusCode}`);
@@ -262,10 +268,17 @@ async function runServerSmokeTest() {
     error.message += `\nserver logs:\n${logs.join("").trim() || "(none)"}`;
     throw error;
   } finally {
-    child.kill();
+    if (child.exitCode === null) {
+      child.kill();
+      await Promise.race([
+        new Promise((resolve) => child.once("exit", resolve)),
+        new Promise((resolve) => setTimeout(resolve, 1000)),
+      ]);
+    }
+    try { fs.rmSync(dataDir, { recursive: true, force: true }); } catch { /* best effort cleanup */ }
   }
 
-  console.log("ok server: HTTP + traversal guard + WebSocket relay");
+  console.log("ok server: HTTP + health + traversal guard + WebSocket relay");
 }
 
 async function main() {

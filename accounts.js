@@ -21,8 +21,12 @@ const MAX_STATE_BYTES = 512 * 1024; // trần kích thước blob trạng thái 
 const MAX_TOKENS_PER_USER = 5;      // số phiên đăng nhập đồng thời giữ lại
 const SCRYPT_KEYLEN = 32;
 const USERNAME_RE = /^[a-zA-Z0-9_.-]{3,24}$/;
-const MIN_PASSWORD = 6;
+const MIN_PASSWORD = 8;
 const MAX_PASSWORD = 128;
+const SESSION_TTL_DAYS = Math.max(1, Math.min(365, Number(process.env.SESSION_TTL_DAYS) || 30));
+const SESSION_TTL_MS = SESSION_TTL_DAYS * 24 * 60 * 60 * 1000;
+// Salt cố định chỉ dùng để cân bằng chi phí scrypt khi username không tồn tại.
+const DUMMY_LOGIN_SALT = "2f0f85f95b680d1d834ca3c66b92f615";
 
 // ---------- Nạp / lưu (SQLite transaction + hàng đợi mutation) ----------
 let db = { users: {} };
@@ -207,27 +211,34 @@ async function register(username, password) {
 }
 
 async function login(username, password) {
-  if (typeof username !== "string" || typeof password !== "string") return { error: "invalid_credentials" };
+  if (!validUsername(username) || typeof password !== "string" || password.length > MAX_PASSWORD) {
+    return { error: "invalid_credentials" };
+  }
   return mutateAndPersist((draft) => {
     const user = draft.users[username.toLowerCase()];
-    if (!user) return { error: "invalid_credentials" };
-    const candidate = hashPassword(password, user.salt);
-    if (!timingEqual(candidate, user.hash)) return { error: "invalid_credentials" };
+    const candidate = hashPassword(password, user ? user.salt : DUMMY_LOGIN_SALT);
+    if (!user || !timingEqual(candidate, user.hash)) return { error: "invalid_credentials" };
     const token = makeToken();
-    user.tokens = user.tokens || [];
-    user.tokens.push({ h: hashToken(token), createdAt: Date.now() });
+    const now = Date.now();
+    user.tokens = (user.tokens || []).filter((entry) => (
+      entry && typeof entry.createdAt === "number" && now - entry.createdAt <= SESSION_TTL_MS
+    ));
+    user.tokens.push({ h: hashToken(token), createdAt: now });
     if (user.tokens.length > MAX_TOKENS_PER_USER) user.tokens = user.tokens.slice(-MAX_TOKENS_PER_USER);
     return { token, username: user.username, state: user.state || {}, stateUpdatedAt: user.stateUpdatedAt || 0 };
   });
 }
 
-// Tìm user theo token phiên (so khớp băm).
+// Tìm user theo token phiên (so khớp băm và bỏ qua phiên đã hết hạn).
 function findUserByToken(database, token) {
   if (!token || typeof token !== "string") return null;
   const h = hashToken(token);
+  const now = Date.now();
   for (const key of Object.keys(database.users)) {
     const u = database.users[key];
-    if (u.tokens && u.tokens.some((t) => t.h === h)) return u;
+    if (u.tokens && u.tokens.some((entry) => (
+      entry && entry.h === h && typeof entry.createdAt === "number" && now - entry.createdAt <= SESSION_TTL_MS
+    ))) return u;
   }
   return null;
 }
@@ -373,12 +384,18 @@ function getRating(token) {
   return { username: u.username, overall: r.overall, games: r.games, wins: r.wins, losses: r.losses, draws: r.draws, played: r.played };
 }
 
+// Kiểm tra storage cho health endpoint; không trả dữ liệu nhạy cảm.
+function health() {
+  openDatabase().prepare("SELECT 1 AS ok").get();
+  return { ok: true };
+}
+
 // Cho test: đặt lại trạng thái trong bộ nhớ (không đụng file).
 function _reset() { db = { users: {} }; loaded = true; }
 
 module.exports = {
   register, login, logout, getState, putState, userByToken,
-  validUsername, validPassword, recordMatch, leaderboard, getRating,
-  MAX_STATE_BYTES, MIN_PASSWORD, ELO_START,
+  validUsername, validPassword, recordMatch, leaderboard, getRating, health,
+  MAX_STATE_BYTES, MIN_PASSWORD, ELO_START, SESSION_TTL_DAYS,
   _reset, _file: DB_FILE,
 };

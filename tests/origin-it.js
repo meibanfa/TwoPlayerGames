@@ -27,6 +27,7 @@ function log(ok, msg) { console.log((ok ? "\u2714 " : "\u2718 ") + msg); if (!ok
     log(await tryOpen({}), "khong co Origin (client thuan) duoc chap nhan");
     log(await tryOpen({ Origin: `http://127.0.0.1:${PORT}` }), "cung host duoc chap nhan");
     log(await tryOpen({ Origin: "https://good.example" }), "origin trong allowlist duoc chap nhan");
+    log(!(await tryOpen({ Origin: "http://localhost:3000", Host: "game.example" })), "localhost origin khong duoc vuot allowlist cua host public");
     log(!(await tryOpen({ Origin: "https://evil.example" })), "origin la bi tu choi");
     console.log(process.exitCode ? "FAIL" : "ALL PASS");
   } catch (e) {

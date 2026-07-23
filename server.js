@@ -219,6 +219,21 @@ const server = http.createServer((req, res) => {
     return res.end("Bad Request");
   }
 
+  // Health check bao gồm khả năng truy cập account storage.
+  if (urlPath === "/health") {
+    if (req.method !== "GET") {
+      res.setHeader("Allow", "GET");
+      return sendJson(res, 405, { error: "method_not_allowed" });
+    }
+    try {
+      accounts.health();
+      return sendJson(res, 200, { ok: true });
+    } catch (err) {
+      console.error("[health] Account storage unavailable:", err.message);
+      return sendJson(res, 503, { ok: false, error: "storage_unavailable" });
+    }
+  }
+
   // Định tuyến API trước khi phục vụ file tĩnh.
   if (urlPath === "/api" || urlPath.startsWith("/api/")) {
     handleApi(req, res, urlPath);
@@ -273,14 +288,22 @@ const server = http.createServer((req, res) => {
 
 // ---------- WebSocket: phòng chơi online ----------
 // Cho phép origin nếu: không có Origin (client không phải trình duyệt, ví dụ test),
-// trùng host của request, là localhost, hoặc nằm trong ALLOWED_ORIGINS.
+// trùng host của request, localhost gọi localhost, hoặc nằm trong ALLOWED_ORIGINS.
+function isLoopbackHostname(hostname) {
+  return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "[::1]" || hostname === "::1";
+}
+
 function isAllowedOrigin(origin, host) {
   if (!origin) return true; // ws client thuần (test, CLI) không gửi Origin
   let parsed;
   try { parsed = new URL(origin); } catch { return false; }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return false;
   const originHost = parsed.host;
   if (host && originHost === host) return true; // cùng host -> an toàn
-  if (parsed.hostname === "localhost" || parsed.hostname === "127.0.0.1") return true;
+
+  let requestHostname = "";
+  try { requestHostname = new URL("http://" + host).hostname; } catch { /* host không hợp lệ */ }
+  if (isLoopbackHostname(parsed.hostname) && isLoopbackHostname(requestHostname)) return true;
   return ALLOWED_ORIGINS.includes(origin);
 }
 

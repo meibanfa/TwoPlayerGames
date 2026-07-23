@@ -226,6 +226,7 @@ Server đã có sẵn một số lớp chống lạm dụng cơ bản, điều c
 | `MAX_CONNECTIONS_PER_IP` | `20` | Số kết nối tối đa từ một IP (chống lách rate-limit bằng nhiều socket). |
 | `MAX_ROOMS` | `2000` | Tổng số phòng tồn tại cùng lúc (chống cạn bộ nhớ). |
 | `DATA_DIR` | `./data` | Thư mục lưu `accounts.sqlite`. Khi deploy phải trỏ tới persistent disk/volume để không mất tài khoản sau restart hoặc redeploy. |
+| `SESSION_TTL_DAYS` | `30` | Số ngày token đăng nhập còn hiệu lực (giới hạn 1–365 ngày). |
 
 Dữ liệu tài khoản dùng SQLite (WAL + transaction). Nếu còn `data/accounts.json` từ bản cũ,
 server tự import một lần rồi đổi tên file cũ thành `accounts.json.migrated.bak`.
