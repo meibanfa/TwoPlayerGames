@@ -25,10 +25,14 @@ const MAX_PASSWORD = 128;
 // ---------- Nạp / lưu (ghi tuần tự, atomic) ----------
 let db = { users: {} };
 let loaded = false;
-let writeChain = Promise.resolve();
+let mutationChain = Promise.resolve();
 
-function ensureDir() {
-  try { fs.mkdirSync(DATA_DIR, { recursive: true }); } catch { /* ignore */ }
+class StorageError extends Error {
+  constructor(cause) {
+    super("Account storage is unavailable", { cause });
+    this.name = "StorageError";
+    this.code = "storage_unavailable";
+  }
 }
 
 function load() {
@@ -38,23 +42,44 @@ function load() {
     const raw = fs.readFileSync(DB_FILE, "utf8");
     const parsed = JSON.parse(raw);
     if (parsed && typeof parsed === "object" && parsed.users) db = parsed;
-  } catch { /* file chưa tồn tại -> dùng db rỗng */ }
+  } catch (err) {
+    if (err && err.code !== "ENOENT") {
+      console.error("[accounts] Failed to load account data:", err.message);
+    }
+  }
+}
+
+function cloneDb(source) {
+  return JSON.parse(JSON.stringify(source));
 }
 
 // Ghi atomic: viết ra file tạm rồi rename (tránh hỏng file khi ghi dở).
-function persist() {
-  ensureDir();
-  const snapshot = JSON.stringify(db);
-  writeChain = writeChain.then(
-    () => new Promise((resolve) => {
-      const tmp = DB_FILE + "." + crypto.randomBytes(6).toString("hex") + ".tmp";
-      fs.writeFile(tmp, snapshot, (err) => {
-        if (err) { resolve(); return; }
-        fs.rename(tmp, DB_FILE, () => resolve());
-      });
-    }),
-  );
-  return writeChain;
+async function writeSnapshot(nextDb) {
+  const tmp = DB_FILE + "." + crypto.randomBytes(6).toString("hex") + ".tmp";
+  try {
+    await fs.promises.mkdir(DATA_DIR, { recursive: true });
+    await fs.promises.writeFile(tmp, JSON.stringify(nextDb));
+    await fs.promises.rename(tmp, DB_FILE);
+  } catch (err) {
+    try { await fs.promises.rm(tmp, { force: true }); } catch { /* best effort cleanup */ }
+    console.error("[accounts] Failed to persist account data:", err.message);
+    throw new StorageError(err);
+  }
+}
+
+// Tuần tự hóa toàn bộ mutation. Chỉ cập nhật bộ nhớ sau khi snapshot đã ghi thành công.
+function mutateAndPersist(mutator) {
+  const operation = mutationChain.then(async () => {
+    load();
+    const draft = cloneDb(db);
+    const result = mutator(draft);
+    if (result && result.error) return result;
+    await writeSnapshot(draft);
+    db = draft;
+    return result;
+  });
+  mutationChain = operation.then(() => undefined, () => undefined);
+  return operation;
 }
 
 // ---------- Băm mật khẩu / token ----------
@@ -93,61 +118,66 @@ function cleanState(state) {
 }
 
 // ---------- API nghiệp vụ ----------
-function register(username, password) {
-  load();
+async function register(username, password) {
   if (!validUsername(username)) return { error: "invalid_username" };
   if (!validPassword(password)) return { error: "invalid_password" };
-  const key = username.toLowerCase();
-  if (db.users[key]) return { error: "username_taken" };
-  const salt = crypto.randomBytes(16).toString("hex");
-  const token = makeToken();
-  db.users[key] = {
-    username,
-    salt,
-    hash: hashPassword(password, salt),
-    createdAt: Date.now(),
-    tokens: [{ h: hashToken(token), createdAt: Date.now() }],
-    state: {},
-    stateUpdatedAt: 0,
-  };
-  persist();
-  return { token, username };
+  return mutateAndPersist((draft) => {
+    const key = username.toLowerCase();
+    if (draft.users[key]) return { error: "username_taken" };
+    const salt = crypto.randomBytes(16).toString("hex");
+    const token = makeToken();
+    draft.users[key] = {
+      username,
+      salt,
+      hash: hashPassword(password, salt),
+      createdAt: Date.now(),
+      tokens: [{ h: hashToken(token), createdAt: Date.now() }],
+      state: {},
+      stateUpdatedAt: 0,
+    };
+    return { token, username };
+  });
 }
 
-function login(username, password) {
-  load();
+async function login(username, password) {
   if (typeof username !== "string" || typeof password !== "string") return { error: "invalid_credentials" };
-  const user = db.users[username.toLowerCase()];
-  if (!user) return { error: "invalid_credentials" };
-  const candidate = hashPassword(password, user.salt);
-  if (!timingEqual(candidate, user.hash)) return { error: "invalid_credentials" };
-  const token = makeToken();
-  user.tokens = user.tokens || [];
-  user.tokens.push({ h: hashToken(token), createdAt: Date.now() });
-  if (user.tokens.length > MAX_TOKENS_PER_USER) user.tokens = user.tokens.slice(-MAX_TOKENS_PER_USER);
-  persist();
-  return { token, username: user.username, state: user.state || {}, stateUpdatedAt: user.stateUpdatedAt || 0 };
+  return mutateAndPersist((draft) => {
+    const user = draft.users[username.toLowerCase()];
+    if (!user) return { error: "invalid_credentials" };
+    const candidate = hashPassword(password, user.salt);
+    if (!timingEqual(candidate, user.hash)) return { error: "invalid_credentials" };
+    const token = makeToken();
+    user.tokens = user.tokens || [];
+    user.tokens.push({ h: hashToken(token), createdAt: Date.now() });
+    if (user.tokens.length > MAX_TOKENS_PER_USER) user.tokens = user.tokens.slice(-MAX_TOKENS_PER_USER);
+    return { token, username: user.username, state: user.state || {}, stateUpdatedAt: user.stateUpdatedAt || 0 };
+  });
 }
 
 // Tìm user theo token phiên (so khớp băm).
-function userByToken(token) {
-  load();
+function findUserByToken(database, token) {
   if (!token || typeof token !== "string") return null;
   const h = hashToken(token);
-  for (const key of Object.keys(db.users)) {
-    const u = db.users[key];
+  for (const key of Object.keys(database.users)) {
+    const u = database.users[key];
     if (u.tokens && u.tokens.some((t) => t.h === h)) return u;
   }
   return null;
 }
 
-function logout(token) {
-  const u = userByToken(token);
-  if (!u) return { ok: true };
-  const h = hashToken(token);
-  u.tokens = (u.tokens || []).filter((t) => t.h !== h);
-  persist();
-  return { ok: true };
+function userByToken(token) {
+  load();
+  return findUserByToken(db, token);
+}
+
+async function logout(token) {
+  return mutateAndPersist((draft) => {
+    const u = findUserByToken(draft, token);
+    if (!u) return { ok: true };
+    const h = hashToken(token);
+    u.tokens = (u.tokens || []).filter((t) => t.h !== h);
+    return { ok: true };
+  });
 }
 
 function getState(token) {
@@ -156,16 +186,17 @@ function getState(token) {
   return { state: u.state || {}, stateUpdatedAt: u.stateUpdatedAt || 0, username: u.username };
 }
 
-function putState(token, state) {
-  const u = userByToken(token);
-  if (!u) return { error: "unauthorized" };
+async function putState(token, state) {
   const clean = cleanState(state);
   if (!clean) return { error: "invalid_state" };
   if (stateBytes(clean) > MAX_STATE_BYTES) return { error: "state_too_large" };
-  u.state = clean;
-  u.stateUpdatedAt = Date.now();
-  persist();
-  return { ok: true, stateUpdatedAt: u.stateUpdatedAt };
+  return mutateAndPersist((draft) => {
+    const u = findUserByToken(draft, token);
+    if (!u) return { error: "unauthorized" };
+    u.state = clean;
+    u.stateUpdatedAt = Date.now();
+    return { ok: true, stateUpdatedAt: u.stateUpdatedAt };
+  });
 }
 
 // ---------- ELO / bảng xếp hạng ----------
@@ -200,44 +231,45 @@ function gameRating(r, gameId) {
 // Ghi nhận kết quả một ván online giữa hai tài khoản đã đăng nhập.
 // result: "a" (A thắng), "b" (B thắng), "draw".
 // Trả về rating mới của từng bên (overall + theo game) để báo lại client.
-function recordMatch(gameId, userAName, userBName, result) {
-  load();
+async function recordMatch(gameId, userAName, userBName, result) {
   if (!isValidGameId(gameId)) return { error: "invalid_game" };
-  const a = db.users[String(userAName || "").toLowerCase()];
-  const b = db.users[String(userBName || "").toLowerCase()];
-  if (!a || !b || a === b) return { error: "invalid_players" };
   if (result !== "a" && result !== "b" && result !== "draw") return { error: "invalid_result" };
 
-  const ra = ensureRatings(a);
-  const rb = ensureRatings(b);
-  const scoreA = result === "a" ? 1 : result === "draw" ? 0.5 : 0;
-  const scoreB = 1 - scoreA;
+  return mutateAndPersist((draft) => {
+    const a = draft.users[String(userAName || "").toLowerCase()];
+    const b = draft.users[String(userBName || "").toLowerCase()];
+    if (!a || !b || a === b) return { error: "invalid_players" };
 
-  // Cập nhật overall.
-  const ea = expectedScore(ra.overall, rb.overall);
-  const eb = 1 - ea;
-  ra.overall = newRating(ra.overall, ea, scoreA);
-  rb.overall = newRating(rb.overall, eb, scoreB);
+    const ra = ensureRatings(a);
+    const rb = ensureRatings(b);
+    const scoreA = result === "a" ? 1 : result === "draw" ? 0.5 : 0;
+    const scoreB = 1 - scoreA;
 
-  // Cập nhật rating theo game (giữ lại giá trị cũ để tính delta).
-  const ga = gameRating(ra, gameId);
-  const gb = gameRating(rb, gameId);
-  const ega = expectedScore(ga, gb);
-  ra.games[gameId] = newRating(ga, ega, scoreA);
-  rb.games[gameId] = newRating(gb, 1 - ega, scoreB);
+    // Cập nhật overall.
+    const ea = expectedScore(ra.overall, rb.overall);
+    const eb = 1 - ea;
+    ra.overall = newRating(ra.overall, ea, scoreA);
+    rb.overall = newRating(rb.overall, eb, scoreB);
 
-  // Thống kê thắng/thua/hòa.
-  ra.played++; rb.played++;
-  if (result === "draw") { ra.draws++; rb.draws++; }
-  else if (result === "a") { ra.wins++; rb.losses++; }
-  else { ra.losses++; rb.wins++; }
+    // Cập nhật rating theo game (giữ lại giá trị cũ để tính delta).
+    const ga = gameRating(ra, gameId);
+    const gb = gameRating(rb, gameId);
+    const ega = expectedScore(ga, gb);
+    ra.games[gameId] = newRating(ga, ega, scoreA);
+    rb.games[gameId] = newRating(gb, 1 - ega, scoreB);
 
-  persist();
-  return {
-    ok: true,
-    a: { username: a.username, overall: ra.overall, game: ra.games[gameId], delta: ra.games[gameId] - ga },
-    b: { username: b.username, overall: rb.overall, game: rb.games[gameId], delta: rb.games[gameId] - gb },
-  };
+    // Thống kê thắng/thua/hòa.
+    ra.played++; rb.played++;
+    if (result === "draw") { ra.draws++; rb.draws++; }
+    else if (result === "a") { ra.wins++; rb.losses++; }
+    else { ra.losses++; rb.wins++; }
+
+    return {
+      ok: true,
+      a: { username: a.username, overall: ra.overall, game: ra.games[gameId], delta: ra.games[gameId] - ga },
+      b: { username: b.username, overall: rb.overall, game: rb.games[gameId], delta: rb.games[gameId] - gb },
+    };
+  });
 }
 
 // Bảng xếp hạng: theo game cụ thể hoặc overall (gameId rỗng/"overall").

@@ -159,19 +159,19 @@ async function handleApi(req, res, urlPath) {
     if (route === "/api/register" && req.method === "POST") {
       if (!apiRateLimit("reg:" + ip, 10, 60_000)) return sendJson(res, 429, { error: "rate_limited" });
       const body = await readJsonBody(req);
-      const r = accounts.register(body.username, body.password);
+      const r = await accounts.register(body.username, body.password);
       if (r.error) return sendJson(res, 400, r);
       return sendJson(res, 200, r);
     }
     if (route === "/api/login" && req.method === "POST") {
       if (!apiRateLimit("login:" + ip, 20, 60_000)) return sendJson(res, 429, { error: "rate_limited" });
       const body = await readJsonBody(req);
-      const r = accounts.login(body.username, body.password);
+      const r = await accounts.login(body.username, body.password);
       if (r.error) return sendJson(res, 401, r);
       return sendJson(res, 200, r);
     }
     if (route === "/api/logout" && req.method === "POST") {
-      accounts.logout(bearerToken(req));
+      await accounts.logout(bearerToken(req));
       return sendJson(res, 200, { ok: true });
     }
     if (route === "/api/state" && req.method === "GET") {
@@ -181,7 +181,7 @@ async function handleApi(req, res, urlPath) {
     }
     if (route === "/api/state" && req.method === "POST") {
       const body = await readJsonBody(req);
-      const r = accounts.putState(bearerToken(req), body.state);
+      const r = await accounts.putState(bearerToken(req), body.state);
       if (r.error) return sendJson(res, r.error === "unauthorized" ? 401 : 400, r);
       return sendJson(res, 200, r);
     }
@@ -200,6 +200,10 @@ async function handleApi(req, res, urlPath) {
   } catch (e) {
     const msg = e && e.message;
     if (msg === "body_too_large") return sendJson(res, 413, { error: "body_too_large" });
+    if (e && e.code === "storage_unavailable") {
+      console.error("[api] Account storage unavailable:", e.cause && e.cause.message || e.message);
+      return sendJson(res, 503, { error: "storage_unavailable" });
+    }
     return sendJson(res, 400, { error: "bad_request" });
   }
   return true;
@@ -685,11 +689,20 @@ wss.on("connection", (ws, req) => {
         if (!result) { room.results = [null, null]; return; } // báo cáo mâu thuẫn -> bỏ qua
 
         room.ratedRound = r0.round;
-        const rec = accounts.recordMatch(room.gameId, room.accounts[0], room.accounts[1], result);
-        if (rec && rec.ok) {
-          send(room.players[0], "rated", { gameId: room.gameId, overall: rec.a.overall, game: rec.a.game, delta: rec.a.delta, result: result === "draw" ? "draw" : (result === "a" ? "win" : "lose") });
-          send(room.players[1], "rated", { gameId: room.gameId, overall: rec.b.overall, game: rec.b.game, delta: rec.b.delta, result: result === "draw" ? "draw" : (result === "b" ? "win" : "lose") });
-        }
+        accounts.recordMatch(room.gameId, room.accounts[0], room.accounts[1], result)
+          .then((rec) => {
+            if (!rec || !rec.ok) {
+              if (room.ratedRound === r0.round) room.ratedRound = null;
+              return;
+            }
+            send(room.players[0], "rated", { gameId: room.gameId, overall: rec.a.overall, game: rec.a.game, delta: rec.a.delta, result: result === "draw" ? "draw" : (result === "a" ? "win" : "lose") });
+            send(room.players[1], "rated", { gameId: room.gameId, overall: rec.b.overall, game: rec.b.game, delta: rec.b.delta, result: result === "draw" ? "draw" : (result === "b" ? "win" : "lose") });
+          })
+          .catch((err) => {
+            if (room.ratedRound === r0.round) room.ratedRound = null;
+            console.error("[accounts] Failed to record ranked match:", err.message);
+            room.players.forEach((player) => send(player, "error", { message: "Không thể lưu điểm xếp hạng. Vui lòng thử lại." }));
+          });
         break;
       }
 
