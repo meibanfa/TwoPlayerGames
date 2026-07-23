@@ -210,9 +210,14 @@ Dù game-agnostic, server vẫn có các lớp phòng vệ:
 - **Làm sạch dữ liệu**: tên người chơi (bỏ ký tự điều khiển, ≤24 ký tự), mã phòng (đúng 4 chữ
   số), gameId (regex an toàn).
 - **Heartbeat**: ping mỗi 15s, ngắt kết nối client không phản hồi (chống kết nối "treo").
+- **Tài khoản**: mật khẩu băm bằng `scrypt` + salt; token phiên ngẫu nhiên chỉ lưu dạng hash.
+  Đăng ký/đăng nhập có rate-limit riêng theo IP.
+- **Persistence**: `accounts.js` lưu tài khoản, state và ELO trong SQLite với WAL + transaction.
+  `DATA_DIR` phải nằm trên persistent disk khi deploy. File `accounts.json` cũ được migration
+  tự động một lần và giữ lại dưới tên `accounts.json.migrated.bak`.
 
-> ⚠️ **Không có xác thực người dùng** — ai có mã phòng đều vào được. Chỉ nên chạy cục bộ
-> hoặc mạng tin cậy; muốn mở công khai cần thêm lớp bảo vệ.
+> ⚠️ Tài khoản không thay thế mật khẩu phòng: ai có mã phòng vẫn có thể thử tham gia.
+> Khi mở public, nên đặt mật khẩu phòng và cấu hình `ALLOWED_ORIGINS` đúng domain.
 
 ---
 

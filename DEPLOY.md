@@ -21,8 +21,13 @@ Repo đã có sẵn file `render.yaml` nên Render tự nhận cấu hình.
    ```
 6. Gửi link đó cho bạn bè. Một người **Tạo phòng** → gửi mã 4 số → người kia **Vào phòng**.
 
-> **Lưu ý gói free của Render:** server sẽ "ngủ" sau ~15 phút không có ai truy cập.
-> Lần mở đầu tiên sau khi ngủ sẽ hơi lâu (30–60 giây) để khởi động lại, sau đó chạy bình thường.
+> **Lưu ý gói free của Render:** server sẽ "ngủ" sau một thời gian không có ai truy cập.
+> Lần mở đầu tiên sau khi ngủ sẽ hơi lâu. Filesystem của gói free không phải nơi lưu dữ liệu
+> bền vững, vì vậy tài khoản/ELO có thể mất sau restart hoặc redeploy.
+>
+> Muốn giữ tài khoản lâu dài, gắn **Persistent Disk** vào `/var/data` và đặt biến môi trường
+> `DATA_DIR=/var/data` (tính năng này có thể yêu cầu gói trả phí). Server lưu dữ liệu trong
+> `accounts.sqlite`; hãy sao lưu file này định kỳ.
 
 ### Nếu không muốn dùng Blueprint
 Có thể tạo thủ công: **New +** → **Web Service** → chọn repo →
@@ -67,6 +72,6 @@ Nếu hai người chung một mạng Wi-Fi:
 
 ## ⚠️ Về bảo mật
 
-Server hiện **không có xác thực** — ai có link và mã phòng đều vào được. Điều này ổn cho
-việc chơi vui với bạn bè, nhưng đừng để link chạy public lâu dài mà không thêm lớp bảo vệ.
-Khi chơi xong, bạn có thể tạm dừng (suspend) service trên Render hoặc tắt ngrok.
+Server có tài khoản cho đồng bộ hồ sơ/ELO, nhưng phòng thường vẫn được truy cập bằng mã phòng.
+Khi deploy public, hãy đặt `ALLOWED_ORIGINS` đúng domain, dùng mật khẩu cho phòng riêng và đặt
+`DATA_DIR` trên persistent disk. Khi chơi qua ngrok xong, hãy tắt tunnel nếu không còn dùng.

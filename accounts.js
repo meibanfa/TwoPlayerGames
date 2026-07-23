@@ -1,6 +1,6 @@
 /* ============================================================
    Accounts: lưu tài khoản + trạng thái người chơi (server-side).
-   - Zero dependency: dùng file JSON ghi atomic (temp + rename).
+   - SQLite transaction + WAL, tự migration từ data/accounts.json.
    - Mật khẩu băm bằng scrypt + salt ngẫu nhiên.
    - Token phiên sinh bằng crypto, lưu ở dạng băm (không lưu token thô).
    Dùng cho đồng bộ hồ sơ/thống kê giữa nhiều thiết bị và làm nền
@@ -10,9 +10,11 @@
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
+const Database = require("better-sqlite3");
 
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, "data");
-const DB_FILE = path.join(DATA_DIR, "accounts.json");
+const DB_FILE = path.join(DATA_DIR, "accounts.sqlite");
+const LEGACY_FILE = path.join(DATA_DIR, "accounts.json");
 
 // ---------- Giới hạn ----------
 const MAX_STATE_BYTES = 512 * 1024; // trần kích thước blob trạng thái mỗi user (512KB)
@@ -22,8 +24,9 @@ const USERNAME_RE = /^[a-zA-Z0-9_.-]{3,24}$/;
 const MIN_PASSWORD = 6;
 const MAX_PASSWORD = 128;
 
-// ---------- Nạp / lưu (ghi tuần tự, atomic) ----------
+// ---------- Nạp / lưu (SQLite transaction + hàng đợi mutation) ----------
 let db = { users: {} };
+let sqlite = null;
 let loaded = false;
 let mutationChain = Promise.resolve();
 
@@ -35,17 +38,69 @@ class StorageError extends Error {
   }
 }
 
+function openDatabase() {
+  if (sqlite) return sqlite;
+  try {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+    sqlite = new Database(DB_FILE);
+    sqlite.pragma("journal_mode = WAL");
+    sqlite.pragma("synchronous = NORMAL");
+    sqlite.pragma("busy_timeout = 5000");
+    sqlite.exec(`
+      CREATE TABLE IF NOT EXISTS accounts (
+        username_key TEXT PRIMARY KEY,
+        data TEXT NOT NULL,
+        updated_at INTEGER NOT NULL
+      )
+    `);
+    return sqlite;
+  } catch (err) {
+    console.error("[accounts] Failed to open SQLite database:", err.message);
+    throw new StorageError(err);
+  }
+}
+
+function migrateLegacy(database) {
+  if (!fs.existsSync(LEGACY_FILE)) return;
+  const count = database.prepare("SELECT COUNT(*) AS count FROM accounts").get().count;
+  if (count > 0) return;
+
+  const parsed = JSON.parse(fs.readFileSync(LEGACY_FILE, "utf8"));
+  if (!parsed || typeof parsed !== "object" || !parsed.users || typeof parsed.users !== "object") {
+    throw new Error("Invalid legacy accounts.json structure");
+  }
+
+  const insert = database.prepare(`
+    INSERT INTO accounts (username_key, data, updated_at)
+    VALUES (?, ?, ?)
+  `);
+  database.transaction((entries) => {
+    for (const [key, user] of entries) insert.run(key, JSON.stringify(user), Date.now());
+  })(Object.entries(parsed.users));
+
+  const backup = LEGACY_FILE + ".migrated.bak";
+  try {
+    fs.renameSync(LEGACY_FILE, fs.existsSync(backup) ? backup + "." + Date.now() : backup);
+    console.log(`[accounts] Migrated ${Object.keys(parsed.users).length} account(s) to SQLite.`);
+  } catch (err) {
+    console.warn("[accounts] SQLite migration succeeded but legacy backup rename failed:", err.message);
+  }
+}
+
 function load() {
   if (loaded) return;
-  loaded = true;
   try {
-    const raw = fs.readFileSync(DB_FILE, "utf8");
-    const parsed = JSON.parse(raw);
-    if (parsed && typeof parsed === "object" && parsed.users) db = parsed;
-  } catch (err) {
-    if (err && err.code !== "ENOENT") {
-      console.error("[accounts] Failed to load account data:", err.message);
+    const database = openDatabase();
+    migrateLegacy(database);
+    const users = {};
+    for (const row of database.prepare("SELECT username_key, data FROM accounts").all()) {
+      users[row.username_key] = JSON.parse(row.data);
     }
+    db = { users };
+    loaded = true;
+  } catch (err) {
+    console.error("[accounts] Failed to load account data:", err.message);
+    throw err instanceof StorageError ? err : new StorageError(err);
   }
 }
 
@@ -53,21 +108,33 @@ function cloneDb(source) {
   return JSON.parse(JSON.stringify(source));
 }
 
-// Ghi atomic: viết ra file tạm rồi rename (tránh hỏng file khi ghi dở).
 async function writeSnapshot(nextDb) {
-  const tmp = DB_FILE + "." + crypto.randomBytes(6).toString("hex") + ".tmp";
   try {
-    await fs.promises.mkdir(DATA_DIR, { recursive: true });
-    await fs.promises.writeFile(tmp, JSON.stringify(nextDb));
-    await fs.promises.rename(tmp, DB_FILE);
+    const database = openDatabase();
+    const upsert = database.prepare(`
+      INSERT INTO accounts (username_key, data, updated_at)
+      VALUES (?, ?, ?)
+      ON CONFLICT(username_key) DO UPDATE SET
+        data = excluded.data,
+        updated_at = excluded.updated_at
+    `);
+    const remove = database.prepare("DELETE FROM accounts WHERE username_key = ?");
+    const persist = database.transaction((users) => {
+      const keys = new Set(Object.keys(users));
+      for (const row of database.prepare("SELECT username_key FROM accounts").all()) {
+        if (!keys.has(row.username_key)) remove.run(row.username_key);
+      }
+      const now = Date.now();
+      for (const [key, user] of Object.entries(users)) upsert.run(key, JSON.stringify(user), now);
+    });
+    persist(nextDb.users);
   } catch (err) {
-    try { await fs.promises.rm(tmp, { force: true }); } catch { /* best effort cleanup */ }
     console.error("[accounts] Failed to persist account data:", err.message);
-    throw new StorageError(err);
+    throw err instanceof StorageError ? err : new StorageError(err);
   }
 }
 
-// Tuần tự hóa toàn bộ mutation. Chỉ cập nhật bộ nhớ sau khi snapshot đã ghi thành công.
+// Tuần tự hóa toàn bộ mutation. Chỉ cập nhật bộ nhớ sau khi transaction đã commit.
 function mutateAndPersist(mutator) {
   const operation = mutationChain.then(async () => {
     load();

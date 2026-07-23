@@ -225,6 +225,10 @@ Server đã có sẵn một số lớp chống lạm dụng cơ bản, điều c
 | `MAX_CONNECTIONS` | `500` | Tổng số kết nối WebSocket đồng thời. |
 | `MAX_CONNECTIONS_PER_IP` | `20` | Số kết nối tối đa từ một IP (chống lách rate-limit bằng nhiều socket). |
 | `MAX_ROOMS` | `2000` | Tổng số phòng tồn tại cùng lúc (chống cạn bộ nhớ). |
+| `DATA_DIR` | `./data` | Thư mục lưu `accounts.sqlite`. Khi deploy phải trỏ tới persistent disk/volume để không mất tài khoản sau restart hoặc redeploy. |
+
+Dữ liệu tài khoản dùng SQLite (WAL + transaction). Nếu còn `data/accounts.json` từ bản cũ,
+server tự import một lần rồi đổi tên file cũ thành `accounts.json.migrated.bak`.
 
 Ngoài ra: token kết nối lại sinh bằng `crypto` (khó đoán), mã phòng dùng RNG bảo mật,
 giới hạn kích thước frame WebSocket (`maxPayload`), và static server gửi kèm các header
