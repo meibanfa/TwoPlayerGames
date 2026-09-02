@@ -13,7 +13,7 @@ async function open(ws) { await new Promise((resolve, reject) => { ws.once("open
   for (const cell of Array.from({ length: 15 }, (_, i) => i)) a.send(JSON.stringify({ type: "gameAction", action: "place", cell }));
   for (const cell of Array.from({ length: 15 }, (_, i) => i + 20)) b.send(JSON.stringify({ type: "gameAction", action: "place", cell }));
   const sweep = next(a, "gameState"); a.send(JSON.stringify({ type: "gameAction", action: "ready" })); b.send(JSON.stringify({ type: "gameAction", action: "ready" })); const state = await sweep;
-  assert.equal(state.phase, "SWEEPING"); assert.equal(JSON.stringify(state).includes("20"), false, "opponent mine coordinates leaked");
+  assert.equal(state.phase, "SWEEPING"); assert.deepEqual(state.placement, Array.from({ length: 15 }, (_, i) => i)); assert.equal(state.boards, undefined, "hidden board leaked");
   const hitP = next(a, "revealResult"); a.send(JSON.stringify({ type: "gameAction", action: "reveal", cell: 20 })); const hit = await hitP; assert.equal(hit.cells[0].mine, true); assert.equal(hit.penalty, 10000);
   const duplicate = next(a, "error"); a.send(JSON.stringify({ type: "gameAction", action: "reveal", cell: 20 })); assert.match((await duplicate).message, /取消旗子|已翻开/);
   const disconnected = next(a, "opponentDisconnected"); b.close(); await disconnected;
