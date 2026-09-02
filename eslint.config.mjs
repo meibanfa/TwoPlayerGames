@@ -54,10 +54,10 @@ export default [
   },
   {
     // Code chạy trên Node: server, accounts store, scripts, tests
-    files: ["server.js", "accounts.js", "playwright.config.js", "scripts/**/*.js", "tests/**/*.js"],
+    files: ["server.js", "accounts.js", "playwright.config.js", "scripts/**/*.js", "scripts/**/*.mjs", "tests/**/*.js"],
     languageOptions: {
       ecmaVersion: 2022,
-      sourceType: "commonjs",
+      sourceType: "module",
       globals: {
         ...globals.node,
       },

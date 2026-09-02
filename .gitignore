@@ -1,19 +1,18 @@
+
 # Dependencies
 node_modules/
 
-# Logs
+# Logs and local configuration
 *.log
 npm-debug.log*
-
-# Môi trường / hệ điều hành
-.DS_Store
-Thumbs.db
 .env
 
-# Dữ liệu tài khoản (server-side, không commit)
+# Local runtime/account data
 data/
 
-# Playwright artifacts
+# Generated review reports and browser artifacts
+.review/latest.json
+.review/latest.md
 test-results/
 playwright-report/
 
