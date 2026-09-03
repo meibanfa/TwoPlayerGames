@@ -56,6 +56,14 @@ async function place(page, cells) {
 async function move(page, cell) {
   await page.locator(".forgotten-cell").nth(cell).click();
 }
+async function publicBoardState(page) {
+  return page.evaluate(() => ({
+    pawns: [...document.querySelectorAll(".forgotten-cell")].flatMap((cell, index) => cell.querySelector(".pawn") ? [{ index, kind: cell.querySelector(".pawn").classList.contains("red-pawn") ? "red" : "green" }] : []),
+    treasures: [...document.querySelectorAll(".forgotten-cell")].flatMap((cell, index) => cell.querySelector(".treasure-marker") ? [{ index, collected: cell.querySelector(".treasure-marker").classList.contains("treasure-collected") }] : []),
+    legal: [...document.querySelectorAll(".forgotten-cell")].flatMap((cell, index) => cell.classList.contains("legal-move") ? [index] : []),
+    turn: document.querySelector(".turn").textContent,
+  }));
+}
 function stepToward(from, target) {
   const source = L.rowCol(from), destination = L.rowCol(target);
   return L.index(source.row + Math.sign(destination.row - source.row), source.col + Math.sign(destination.col - source.col));
@@ -77,17 +85,37 @@ test("two browsers complete forgotten mines without exposing hidden layouts", as
     await join(b, code, "绿方测试");
     await expect(a.locator(".forgotten-cell").first()).toHaveAttribute("aria-label", /a1/);
     expect(await a.locator(".forgotten-board").evaluate((element) => element.getBoundingClientRect().right <= window.innerWidth)).toBe(true);
+    for (const page of [a, b]) {
+      await expect(page.locator(".red-start-marker")).toHaveCount(1);
+      await expect(page.locator(".green-start-marker")).toHaveCount(1);
+      await expect(page.locator(".treasure-uncollected")).toHaveCount(3);
+      await expect(page.locator(".forgotten-cell").nth(0)).toHaveClass(/treasure/);
+      await expect(page.locator(".forgotten-cell").nth(60)).toHaveClass(/treasure/);
+      await expect(page.locator(".forgotten-cell").nth(120)).toHaveClass(/treasure/);
+    }
 
     await place(a, placementA);
     await a.locator(".confirm").click();
-    await expect(a.locator(".forgotten-board")).toBeHidden();
+    await expect(a.locator(".forgotten-board")).toBeVisible();
     await expect(a.locator(".forgotten-status")).toContainText("忘掉雷图");
+    await expect(a.locator(".mine-preview")).toHaveCount(0);
+    await expect(a.locator(".red-start-marker")).toHaveCount(1);
+    await expect(a.locator(".green-start-marker")).toHaveCount(1);
+    await expect(a.locator(".treasure-uncollected")).toHaveCount(3);
     await place(b, placementB);
     await b.locator(".confirm").click();
     await expect(a.locator(".forgotten-phase")).toHaveText("寻宝阶段");
     await expect(b.locator(".forgotten-phase")).toHaveText("寻宝阶段");
     await expect(a.locator(".mine-preview")).toHaveCount(0);
     await expect(b.locator(".mine-preview")).toHaveCount(0);
+    for (const page of [a, b]) {
+      await expect(page.locator(".red-pawn")).toHaveCount(1);
+      await expect(page.locator(".green-pawn")).toHaveCount(1);
+      await expect(page.locator(".red-start-marker")).toHaveCount(1);
+      await expect(page.locator(".green-start-marker")).toHaveCount(1);
+      await expect(page.locator(".treasure-uncollected")).toHaveCount(3);
+      await expect(page.locator(".legal-move")).toHaveCount(3);
+    }
 
     const first = (await a.locator(".turn").textContent()).includes("红方测试") ? 0 : 1;
     const second = 1 - first;
@@ -96,11 +124,20 @@ test("two browsers complete forgotten mines without exposing hidden layouts", as
     const prep = [20, 99];
     const mine = [30, 88];
     const reentry = [21, 100];
+    await expect(pages[first].locator(".forgotten-cell:enabled")).toHaveCount(3);
+    await expect(pages[second].locator(".forgotten-cell:enabled")).toHaveCount(0);
+    await expect(pages[first].locator(".turn")).toContainText(first === 0 ? "🔴 红方回合" : "🟢 绿方回合");
+    await expect(pages[first].locator(".forgotten-status")).toHaveText("轮到你了，请移动一格");
+    await expect(pages[second].locator(".forgotten-status")).toHaveText("等待对手移动");
     await move(pages[first], prep[first]); positions[first] = prep[first];
+    for (const page of pages) await expect(page.locator(".forgotten-cell").nth(prep[first]).locator(first === 0 ? ".red-pawn" : ".green-pawn")).toHaveCount(1);
     await expect(pages[second].locator(".turn")).toContainText(second === 0 ? "红方测试" : "绿方测试");
+    await expect(pages[second].locator(".forgotten-cell:enabled")).toHaveCount(3);
+    await expect(pages[first].locator(".forgotten-cell:enabled")).toHaveCount(0);
+    expect(await publicBoardState(a)).toEqual(await publicBoardState(b));
     await expect(pages[first].locator(".forgotten-event")).toContainText("周围共有");
     await move(pages[second], prep[second]); positions[second] = prep[second];
-    await move(pages[first], mine[first]); positions[first] = L.START_CELLS[first];
+    await move(pages[first], mine[first]); positions[first] = null;
     await expect(pages[first].locator(".forgotten-phase")).toHaveText("重新入场");
     await expect(pages[first].locator(".forgotten-event")).toContainText("踩到地雷，-5 分");
     await move(pages[first], reentry[first]); positions[first] = reentry[first];
@@ -127,6 +164,8 @@ test("two browsers complete forgotten mines without exposing hidden layouts", as
     }
     await expect(a.locator(".forgotten-result")).toBeVisible();
     await expect(b.locator(".forgotten-result")).toBeVisible();
+    await expect(a.locator(".treasure-collected")).toHaveCount(3);
+    await expect(b.locator(".treasure-collected")).toHaveCount(3);
     await expect(a.locator(".forgotten-result")).toContainText("三个宝物均已找到");
     const aResult = await a.locator(".forgotten-result").textContent();
     const bResult = await b.locator(".forgotten-result").textContent();
