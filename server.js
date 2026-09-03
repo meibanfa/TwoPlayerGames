@@ -45,7 +45,7 @@ function registerGame(handler) {
   if (!handler || !handler.id || gameHandlers.has(handler.id)) throw new Error("invalid or duplicate server game handler");
   gameHandlers.set(handler.id, handler);
 }
-registerGame(createMinesweeperDuel({ send, broadcast, sendError, placementMs: PLACEMENT_MS, finishWindowMs: FINISH_WINDOW_MS }));
+registerGame(createMinesweeperDuel({ send, broadcast, sendError, placementMs: PLACEMENT_MS, finishWindowMs: FINISH_WINDOW_MS, isRoomActive: (room) => rooms.get(room.code) === room }));
 registerGame(createForgottenMines({ send, broadcast, sendError, placementMs: FORGOTTEN_MINES_PLACEMENT_MS, isRoomActive: (room) => rooms.get(room.code) === room }));
 
 function makeCode() {

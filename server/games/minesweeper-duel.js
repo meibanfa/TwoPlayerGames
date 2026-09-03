@@ -4,7 +4,7 @@ const crypto = require("crypto");
 const Logic = require("../../js/games/minesweeper-duel-logic");
 
 function createMinesweeperDuel(deps) {
-  const { send, broadcast, sendError, placementMs, finishWindowMs } = deps;
+  const { send, broadcast, sendError, placementMs, finishWindowMs, isRoomActive } = deps;
 
   function validCell(value) {
     return Number.isInteger(value) && value >= 0 && value < Logic.BOARD_ROWS * Logic.BOARD_COLS;
@@ -97,9 +97,9 @@ function createMinesweeperDuel(deps) {
     emitProgress(room);
   }
 
-  function autoPlacement(room) {
-    const state = room.state;
-    if (state.phase !== "PLACING") return;
+  function autoPlacement(room, scheduledState = room.state) {
+    if (!isRoomActive(room) || room.state !== scheduledState || scheduledState.phase !== "PLACING") return;
+    const state = scheduledState;
     state.placements.forEach((set, seat) => {
       while (set.size < Logic.MINE_COUNT) set.add(crypto.randomInt(0, Logic.BOARD_ROWS * Logic.BOARD_COLS));
       state.ready[seat] = true;
@@ -109,7 +109,8 @@ function createMinesweeperDuel(deps) {
 
   function schedulePlacement(room) {
     clearTimeout(room.placementTimer);
-    room.placementTimer = setTimeout(() => autoPlacement(room), placementMs);
+    const scheduledState = room.state;
+    room.placementTimer = setTimeout(() => autoPlacement(room, scheduledState), placementMs);
     room.placementTimer.unref?.();
   }
 
@@ -147,7 +148,10 @@ function createMinesweeperDuel(deps) {
       return;
     }
     clearTimeout(room.finishTimer);
-    room.finishTimer = setTimeout(() => finalize(room), finishWindowMs);
+    const scheduledState = state;
+    room.finishTimer = setTimeout(() => {
+      if (isRoomActive(room) && room.state === scheduledState) finalize(room);
+    }, finishWindowMs);
     room.finishTimer.unref?.();
   }
 

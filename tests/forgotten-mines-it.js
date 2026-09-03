@@ -127,6 +127,16 @@ async function leaveAll(...sockets) {
     const first = room.state.currentTurn;
     const second = 1 - first;
     const safeSteps = first === 0 ? [20, 99] : [99, 20];
+    const playingSocket = sockets[second];
+    await close(playingSocket);
+    const playingRestored = await open(url, forgottenFrames[second]); live.push(playingRestored);
+    const playingRejoinP = next(playingRestored, "rejoined");
+    send(playingRestored, "rejoin", { code: room.code, seat: second, token: match.starts[second].token });
+    const playingRejoin = await playingRejoinP;
+    assert.equal(playingRejoin.state.phase, "PLAYING");
+    assertNoPlacement(playingRejoin.state);
+    sockets[second] = playingRestored;
+    if (second === 0) match.a = playingRestored; else match.b = playingRestored;
     const safeState1 = next(sockets[second], "gameState", (message) => message.currentTurn === second);
     send(sockets[first], "gameAction", { action: "move", cell: safeSteps[0], score: 500, currentTurn: first });
     await safeState1;
