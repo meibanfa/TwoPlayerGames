@@ -111,6 +111,8 @@ test("two browsers complete forgotten mines without exposing hidden layouts", as
     for (const page of [a, b]) {
       await expect(page.locator(".red-pawn")).toHaveCount(1);
       await expect(page.locator(".green-pawn")).toHaveCount(1);
+      await expect(page.locator(".forgotten-cell").nth(L.START_CELLS[0]).locator(".red-pawn")).toHaveCount(1);
+      await expect(page.locator(".forgotten-cell").nth(L.START_CELLS[1]).locator(".green-pawn")).toHaveCount(1);
       await expect(page.locator(".red-start-marker")).toHaveCount(1);
       await expect(page.locator(".green-start-marker")).toHaveCount(1);
       await expect(page.locator(".treasure-uncollected")).toHaveCount(3);
@@ -129,8 +131,17 @@ test("two browsers complete forgotten mines without exposing hidden layouts", as
     await expect(pages[first].locator(".turn")).toContainText(first === 0 ? "🔴 红方回合" : "🟢 绿方回合");
     await expect(pages[first].locator(".forgotten-status")).toHaveText("轮到你了，请移动一格");
     await expect(pages[second].locator(".forgotten-status")).toHaveText("等待对手移动");
+    for (const destination of [first === 0 ? 30 : 88, first === 0 ? 0 : 120]) {
+      await expect(pages[first].locator(".forgotten-cell").nth(destination)).toBeDisabled();
+      await expect(pages[first].locator(".forgotten-cell").nth(destination)).not.toHaveClass(/legal-move/);
+    }
     await move(pages[first], prep[first]); positions[first] = prep[first];
-    for (const page of pages) await expect(page.locator(".forgotten-cell").nth(prep[first]).locator(first === 0 ? ".red-pawn" : ".green-pawn")).toHaveCount(1);
+    expect(L.neighbors(L.START_CELLS[first])).toContain(prep[first]);
+    for (const page of pages) {
+      await expect(page.locator(".forgotten-cell").nth(prep[first]).locator(first === 0 ? ".red-pawn" : ".green-pawn")).toHaveCount(1);
+      await expect(page.locator(".forgotten-cell").nth(L.START_CELLS[first]).locator(first === 0 ? ".red-pawn" : ".green-pawn")).toHaveCount(0);
+      await expect(page.locator(".forgotten-cell").nth(L.START_CELLS[first]).locator(first === 0 ? ".red-start-marker" : ".green-start-marker")).toHaveCount(1);
+    }
     await expect(pages[second].locator(".turn")).toContainText(second === 0 ? "红方测试" : "绿方测试");
     await expect(pages[second].locator(".forgotten-cell:enabled")).toHaveCount(3);
     await expect(pages[first].locator(".forgotten-cell:enabled")).toHaveCount(0);
@@ -140,8 +151,17 @@ test("two browsers complete forgotten mines without exposing hidden layouts", as
     await move(pages[first], mine[first]); positions[first] = null;
     await expect(pages[first].locator(".forgotten-phase")).toHaveText("重新入场");
     await expect(pages[first].locator(".forgotten-event")).toContainText("踩到地雷，-5 分");
+    for (const page of pages) {
+      await expect(page.locator(".forgotten-board")).toBeVisible();
+      await expect(page.locator(first === 0 ? ".red-pawn" : ".green-pawn")).toHaveCount(0);
+      await expect(page.locator(first === 0 ? ".red-start-marker" : ".green-start-marker")).toHaveCount(1);
+      await expect(page.locator(".legal-move")).toHaveCount(3);
+    }
+    await expect(pages[first].locator(".forgotten-cell:enabled")).toHaveCount(3);
+    await expect(pages[second].locator(".forgotten-cell:enabled")).toHaveCount(0);
     await move(pages[first], reentry[first]); positions[first] = reentry[first];
     await expect(pages[first].locator(".forgotten-phase")).toHaveText("寻宝阶段");
+    await expect(pages[second].locator(".turn")).toContainText(second === 0 ? "红方测试" : "绿方测试");
 
     await move(pages[second], L.START_CELLS[second]); positions[second] = L.START_CELLS[second];
     await move(pages[first], prep[first]); positions[first] = prep[first];
