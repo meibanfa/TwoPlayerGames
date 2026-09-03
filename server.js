@@ -6,6 +6,7 @@ const path = require("path");
 const crypto = require("crypto");
 const { WebSocketServer } = require("ws");
 const createMinesweeperDuel = require("./server/games/minesweeper-duel");
+const createForgottenMines = require("./server/games/forgotten-mines");
 
 const configuredPort = process.env.PORT === undefined ? 8777 : Number(process.env.PORT);
 if (!Number.isInteger(configuredPort) || configuredPort < 1 || configuredPort > 65_535) throw new Error("PORT must be an integer between 1 and 65535");
@@ -20,6 +21,7 @@ const CREATE_LIMIT = Number(process.env.CREATE_LIMIT) || 12;
 const CREATE_WINDOW_MS = Number(process.env.CREATE_WINDOW_MS) || 60_000;
 const WAITING_ROOM_TTL_MS = Number(process.env.WAITING_ROOM_TTL_MS) || 5 * 60_000;
 const FINISH_WINDOW_MS = Number(process.env.FINISH_WINDOW_MS) || 5_000;
+const FORGOTTEN_MINES_PLACEMENT_MS = Number(process.env.FORGOTTEN_MINES_PLACEMENT_MS) || 600_000;
 const WS_HEARTBEAT_MS = Number(process.env.WS_HEARTBEAT_MS) || 30_000;
 const rooms = new Map();
 const ipCreates = new Map();
@@ -44,6 +46,7 @@ function registerGame(handler) {
   gameHandlers.set(handler.id, handler);
 }
 registerGame(createMinesweeperDuel({ send, broadcast, sendError, placementMs: PLACEMENT_MS, finishWindowMs: FINISH_WINDOW_MS }));
+registerGame(createForgottenMines({ send, broadcast, sendError, placementMs: FORGOTTEN_MINES_PLACEMENT_MS, isRoomActive: (room) => rooms.get(room.code) === room }));
 
 function makeCode() {
   for (let i = 0; i < 10_000; i++) {
