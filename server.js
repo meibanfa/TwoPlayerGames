@@ -193,7 +193,7 @@ function rejoinRoom(ws, message) {
   send(room.players[1 - seat], "opponentReconnected", { gameId: room.gameId });
 }
 
-const PUBLIC_FILES = new Set(["index.html", "styles.css", "js/main.js", "js/net.js", "js/registry.js", "js/games/minesweeper-duel.js", "js/games/minesweeper-duel-logic.js"]);
+const PUBLIC_FILES = new Set(["index.html", "styles.css", "js/main.js", "js/net.js", "js/registry.js", "js/games/minesweeper-duel.js", "js/games/minesweeper-duel-logic.js", "js/games/forgotten-mines.js", "js/games/forgotten-mines-logic.js"]);
 const server = http.createServer((req, res) => {
   let requested;
   try { requested = decodeURIComponent((req.url || "/").split("?")[0]); } catch { res.writeHead(400); res.end("Bad Request"); return; }

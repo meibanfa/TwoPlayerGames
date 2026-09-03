@@ -3,7 +3,7 @@
 const path = require("path"); const { spawn, spawnSync } = require("child_process"); const WebSocket = require("ws");
 const ROOT = path.resolve(__dirname, "..");
 function check(file) { const r = spawnSync(process.execPath, ["--check", file], { encoding: "utf8" }); if (r.status) throw new Error(`${file}: ${r.stderr || r.stdout}`); }
-for (const file of ["server.js", "server/games/minesweeper-duel.js", "server/games/forgotten-mines.js", "js/main.js", "js/net.js", "js/registry.js", "js/games/minesweeper-duel.js", "js/games/minesweeper-duel-logic.js", "js/games/forgotten-mines-logic.js"]) check(path.join(ROOT, file));
+for (const file of ["server.js", "server/games/minesweeper-duel.js", "server/games/forgotten-mines.js", "js/main.js", "js/net.js", "js/registry.js", "js/games/minesweeper-duel.js", "js/games/minesweeper-duel-logic.js", "js/games/forgotten-mines.js", "js/games/forgotten-mines-logic.js"]) check(path.join(ROOT, file));
 const failedStart = spawnSync(process.execPath, ["server.js"], { cwd: ROOT, env: { ...process.env, HOST: "256.256.256.256", PORT: "18777" }, encoding: "utf8", timeout: 3000 });
 if (failedStart.status === 0 || !failedStart.stderr.includes("[server] http error")) throw new Error(`startup failure was not reported: ${failedStart.stderr || failedStart.stdout}`);
 const net = require("http"); const port = 18000 + Math.floor(Math.random() * 1000); let stdout = ""; const child = spawn(process.execPath, ["server.js"], { cwd: ROOT, env: { ...process.env, PORT: String(port), DATA_DIR: path.join(ROOT, "test-results") }, stdio: ["ignore", "pipe", "pipe"] }); child.stdout.on("data", (chunk) => { stdout += chunk; });
