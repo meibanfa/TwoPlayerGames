@@ -9,7 +9,7 @@ const Logic = require("./js/games/minesweeper-duel-logic");
 
 const PORT = Number(process.env.PORT) || 8777;
 const ROOT = path.resolve(__dirname);
-const RECONNECT_GRACE_MS = 45_000;
+const RECONNECT_GRACE_MS = Number(process.env.RECONNECT_GRACE_MS) || 45_000;
 const PLACEMENT_MS = Number(process.env.PLACEMENT_MS) || 45_000;
 const MAX_MESSAGE_BYTES = 12_000;
 const MAX_ROOMS = Number(process.env.MAX_ROOMS) || 1_000;

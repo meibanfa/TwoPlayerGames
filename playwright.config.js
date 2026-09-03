@@ -23,6 +23,7 @@ module.exports = defineConfig({
     env: {
       ...process.env,
       PORT: "8777",
+      RECONNECT_GRACE_MS: "4000",
       DATA_DIR: path.join(__dirname, "test-results", "account-data"),
     },
   },

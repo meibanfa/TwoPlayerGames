@@ -33,6 +33,7 @@
       if (phase === "FINISHED" && finalBoards) finalEl.innerHTML = [["你扫的雷区", finalBoards[ctx.seat]], ["你给对手埋的雷区", finalBoards[1 - ctx.seat]]].map(([title, mines]) => `<section class="final-board"><h3>${title}</h3><div class="duel-board final-grid">${Array.from({ length: L.BOARD_ROWS * L.BOARD_COLS }, (_, i) => `<span class="duel-cell revealed${mines.includes(i) ? " mine-preview" : ""}">${mines.includes(i) ? "💣" : ""}</span>`).join("")}</div></section>`).join("");
     }
     function receive(msg) {
+      const previousPhase = phase;
       if (msg.phase) phase = msg.phase;
       if (msg.placement) placement = new Set(msg.placement);
       if (msg.placementDeadline !== undefined) placementDeadline = msg.placementDeadline;
@@ -46,7 +47,8 @@
       if (msg.mistakes !== undefined) mistakes = msg.mistakes;
       if (msg.penalty !== undefined) penalty = msg.penalty;
       if (msg.progress) progress = msg.progress;
-      if (msg.message) messageEl.textContent = msg.message;
+      if (Object.prototype.hasOwnProperty.call(msg, "message")) messageEl.textContent = msg.message || "";
+      if (previousPhase === "PLACING" && phase === "SWEEPING") messageEl.textContent = "";
       if (msg.result) messageEl.textContent = msg.result;
       if (phase === "FINISHED" && summary) messageEl.textContent = `${msg.result || messageEl.textContent} 你的实际用时：${formatTime(summary[ctx.seat].elapsed)}，罚时：${summary[ctx.seat].penalty / 1000} 秒，失误：${summary[ctx.seat].mistakes}，有效用时：${formatTime(summary[ctx.seat].effectiveTime)}。对手实际用时：${formatTime(summary[1 - ctx.seat].elapsed)}，罚时：${summary[1 - ctx.seat].penalty / 1000} 秒，失误：${summary[1 - ctx.seat].mistakes}，有效用时：${formatTime(summary[1 - ctx.seat].effectiveTime)}。`;
       render();
