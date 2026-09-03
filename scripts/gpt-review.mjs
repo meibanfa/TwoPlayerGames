@@ -18,6 +18,8 @@ function parseArgs(argv) { const out = { base: null, commit: null, workingTree: 
 function defaultBase() { for (const candidate of ["origin/main", "main", "master"]) if (git(["rev-parse", "--verify", candidate], true)) return candidate; return git(["rev-parse", "--verify", "HEAD~1"], true) || null; }
 function scope(options) {
   const base = options.base || defaultBase();
+  const head = git(["rev-parse", "HEAD"]);
+  const baseSha = base ? git(["rev-parse", base], true) : "";
   let range = null;
   if (options.commit) { const parent = git(["rev-parse", "--verify", `${options.commit}^`], true); range = parent ? `${parent}..${options.commit}` : options.commit; }
   else if (!options.workingTree && base) range = `${base}...HEAD`;
@@ -26,7 +28,9 @@ function scope(options) {
   if (!options.commit) git(["diff", "--name-only", "HEAD"], true).split("\n").filter(Boolean).forEach((f) => names.add(f));
   git(["ls-files", "--others", "--exclude-standard"], true).split("\n").filter(Boolean).forEach((f) => names.add(f));
   const stat = range ? git(["diff", "--stat", range], true) : git(["diff", "--stat", "HEAD"], true);
-  return { base, range, files: [...names].sort(), stat };
+  const files = [...names].sort();
+  if (!options.commit && !options.workingTree && baseSha === head && files.length === 0) throw new Error("No reviewable diff detected. Specify --base <commit> or use --working-tree.");
+  return { base, baseSha, head, range, commitCount: range ? Number(git(["rev-list", "--count", range], true) || 0) : 0, files, stat };
 }
 function runCodex(prompt, mode, schemaPath = null) {
   const output = path.join(os.tmpdir(), `codex-review-${process.pid}-${Date.now()}.json`);
@@ -59,7 +63,7 @@ function validateReview(value) {
 }
 function parseStructured(text) { try { return validateReview(JSON.parse(text)); } catch (first) { throw new Error(`Codex returned invalid structured review JSON: ${first.message}`); } }
 function markdown(review, info) {
-  const lines = ["# GPT Code Review", "", `Verdict: ${review.verdict}`, `Scope: ${info.range || "working tree"}`, "", review.summary, ""];
+  const lines = ["# GPT Code Review", "", `Verdict: ${review.verdict}`, `Base: ${info.baseSha || info.base || "none"}`, `Head: ${info.head || "working tree"}`, `Commits covered: ${info.commitCount || 0}`, `Changed files: ${info.files.length}`, `Scope: ${info.range || "working tree"}`, "", review.summary, ""];
   if (!review.findings.length) lines.push("No findings.");
   for (const f of review.findings) lines.push(`## ${f.severity} — ${f.title}`, "", `**${f.file}:${f.line_start}-${f.line_end}** · confidence ${f.confidence}`, "", `**Problem:** ${f.problem}`, "", `**Evidence:** ${f.evidence}`, "", `**Failure scenario:** ${f.failure_scenario}`, "", `**Required fix:** ${f.fix_instruction}`, "", `**Suggested test:** ${f.suggested_test}`, "");
   if (review.verification_notes.length) lines.push("## Verification notes", "", ...review.verification_notes.map((note) => `- ${note}`));
@@ -71,7 +75,8 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     const options = parseArgs(process.argv.slice(2));
     if (options.help) { console.log("Usage: npm run review -- [--base <ref>] [--commit <sha>] [--working-tree]"); process.exit(0); }
     const info = scope(options);
-    const prompt = `Read .review/REVIEWER.md and follow it exactly. Review this repository as an independent fresh-context reviewer. Selected base: ${info.base || "none (no reliable local base)"}. Selected range: ${info.range || "working tree plus untracked files"}. Changed files: ${info.files.join(", ") || "(none detected; inspect current implementation)"}. Diff summary:\n${info.stat || "(no diff summary available)"}\nAvailable validation: npm run lint, npm test, npm run test:e2e, npm run verify. Inspect the actual repository and Git diff yourself; do not rely on this metadata or any implementation summary. Output only the schema JSON.`;
+    console.log(`Review base: ${info.baseSha || info.base || "none"}\nReview head: ${info.head}\nCommits covered: ${info.commitCount}\nChanged files: ${info.files.length}`);
+    const prompt = `Read .review/REVIEWER.md and follow it exactly. Review this repository as an independent fresh-context reviewer. Selected base: ${info.baseSha || info.base || "none (no reliable local base)"}. Selected head: ${info.head}. Selected range: ${info.range || "working tree plus untracked files"}. Commits covered: ${info.commitCount}. Changed files: ${info.files.join(", ") || "(none detected; inspect current implementation)"}. Diff summary:\n${info.stat || "(no diff summary available)"}\nIMPORTANT: this candidate includes staged and/or unstaged changes. Before making any finding, inspect the live file with git diff HEAD, git diff --cached, and direct file reads. Do not report a defect already fixed in the current index or working tree merely because it exists in the historical base range. Available validation: npm run lint, npm test, npm run test:e2e, npm run verify. Inspect the actual repository and Git diff yourself; do not rely on this metadata or any implementation summary. Output only the schema JSON.`;
     let review;
     try { review = parseStructured(await runCodex(prompt, "read-only", SCHEMA)); }
     catch { review = parseStructured(await runCodex(`${prompt}\nYour previous response was malformed. Return only valid JSON matching the schema, with no prose or code fence.`, "read-only", SCHEMA)); }

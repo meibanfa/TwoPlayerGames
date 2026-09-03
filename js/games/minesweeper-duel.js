@@ -9,7 +9,7 @@
     ctx.boardEl.appendChild(root);
     const phaseEl = root.querySelector(".duel-phase"), subtitleEl = root.querySelector(".duel-subtitle"), statsEl = root.querySelector(".duel-stats"), boardEl = root.querySelector(".duel-board"), actions = root.querySelector(".duel-actions"), readyBtn = root.querySelector(".ready"), flagBtn = root.querySelector(".flag-mode"), messageEl = root.querySelector(".duel-message");
     const cells = [];
-    let phase = "PLACING", placement = new Set(), revealed = new Map(), flags = new Set(), finalBoards = null, mistakes = 0, penalty = 0, progress = null, flagMode = false;
+    let phase = "PLACING", placement = new Set(), revealed = new Map(), flags = new Set(), finalBoards = null, mistakes = 0, penalty = 0, progress = null, flagMode = false, placementDeadline = null, sweepStartedAt = null, summary = null;
     for (let i = 0; i < L.BOARD_ROWS * L.BOARD_COLS; i++) {
       const cell = document.createElement("button"); cell.type = "button"; cell.className = "duel-cell"; cell.setAttribute("role", "gridcell");
       cell.addEventListener("click", () => ctx.sendGameAction({ action: phase === "PLACING" ? "place" : (flagMode ? "flag" : "reveal"), cell: i }));
@@ -22,13 +22,18 @@
     function render() {
       phaseEl.textContent = phase === "PLACING" ? "布雷阶段" : phase === "SWEEPING" ? "扫雷阶段" : phase === "FINISHED" ? "比赛结束" : "等待好友";
       subtitleEl.textContent = phase === "PLACING" ? "在棋盘上为对手埋下 15 颗雷。" : phase === "SWEEPING" ? "这是对手为你准备的雷区。" : "和朋友开个房间，来一局。";
-      statsEl.textContent = phase === "PLACING" ? `已埋：${placement.size} / ${L.MINE_COUNT}` : `你的进度：${progress ? progress[0] : revealed.size} / ${L.BOARD_ROWS * L.BOARD_COLS - L.MINE_COUNT} 失误：${mistakes} 罚时：${penalty / 1000} 秒`;
+      const now = Date.now();
+      const timer = phase === "PLACING" ? `剩余时间：${Math.max(0, Math.ceil((placementDeadline - now) / 1000) || 0)} 秒` : phase === "SWEEPING" || phase === "FINISHED" ? `用时：${formatTime(Math.max(0, now - sweepStartedAt || 0))}` : "";
+      statsEl.textContent = phase === "PLACING" ? `已埋：${placement.size} / ${L.MINE_COUNT} ${timer}` : `你的进度：${progress ? progress[0] : revealed.size} / ${L.BOARD_ROWS * L.BOARD_COLS - L.MINE_COUNT} ${timer} 失误：${mistakes} 罚时：${penalty / 1000} 秒`;
       actions.classList.toggle("hidden", phase !== "PLACING" && phase !== "SWEEPING"); readyBtn.classList.toggle("hidden", phase !== "PLACING"); flagBtn.classList.toggle("hidden", phase !== "SWEEPING"); readyBtn.disabled = placement.size !== L.MINE_COUNT;
       cells.forEach((el, i) => { el.className = "duel-cell"; el.textContent = ""; if (phase === "PLACING" && placement.has(i)) { el.classList.add("mine-preview"); el.textContent = "💣"; } else if (revealed.has(i)) { el.classList.add("revealed"); el.textContent = revealed.get(i) === "mine" ? "💣" : String(revealed.get(i)); } else if (flags.has(i)) { el.classList.add("flagged"); el.textContent = "🚩"; } else if (phase === "FINISHED" && finalBoards) { el.classList.add("revealed"); if (finalBoards.includes(i)) { el.textContent = "💣"; el.classList.add("mine-preview"); } } });
     }
     function receive(msg) {
       if (msg.phase) phase = msg.phase;
       if (msg.placement) placement = new Set(msg.placement);
+      if (msg.placementDeadline !== undefined) placementDeadline = msg.placementDeadline;
+      if (msg.sweepStartedAt !== undefined) sweepStartedAt = msg.sweepStartedAt;
+      if (msg.summary) summary = msg.summary;
       if (msg.revealedSnapshot) revealed = new Map(msg.revealedSnapshot.map((x) => [x.cell, x.mine ? "mine" : x.count]));
       if (msg.revealedDelta) msg.revealedDelta.forEach((x) => revealed.set(x.cell, x.mine ? "mine" : x.count));
       if (msg.flags) flags = new Set(msg.flags);
@@ -38,10 +43,13 @@
       if (msg.progress) progress = msg.progress;
       if (msg.message) messageEl.textContent = msg.message;
       if (msg.result) messageEl.textContent = msg.result;
+      if (phase === "FINISHED" && summary) messageEl.textContent = `${msg.result || messageEl.textContent} 你的实际用时：${formatTime(summary[ctx.seat].elapsed)}，罚时：${summary[ctx.seat].penalty / 1000} 秒，失误：${summary[ctx.seat].mistakes}，有效用时：${formatTime(summary[ctx.seat].effectiveTime)}。对手实际用时：${formatTime(summary[1 - ctx.seat].elapsed)}，罚时：${summary[1 - ctx.seat].penalty / 1000} 秒，失误：${summary[1 - ctx.seat].mistakes}，有效用时：${formatTime(summary[1 - ctx.seat].effectiveTime)}。`;
       render();
     }
+    const tick = setInterval(() => { if (phase === "PLACING" || phase === "SWEEPING") render(); }, 1_000);
     render();
-    return { receive, destroy() { root.remove(); }, getPlacement() { return copy([...placement]); } };
+    return { receive, destroy() { clearInterval(tick); root.remove(); }, getPlacement() { return copy([...placement]); } };
   }
+  function formatTime(ms) { if (ms === null || ms === undefined) return "未完成"; const seconds = Math.floor(ms / 1000); return `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`; }
   window.GameRegistry.register({ id: "minesweeper-duel", name: "互坑扫雷", description: "你埋雷，我来扫。双人实时心理博弈。", howTo: ["轮流为对手埋下 15 颗雷，再同时扫雷。", "数字表示周围八格的地雷数量；踩雷会增加 10 秒罚时。"], create });
 })();

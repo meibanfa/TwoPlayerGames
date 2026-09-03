@@ -8,6 +8,7 @@ async function open(ws) { await new Promise((resolve, reject) => { ws.once("open
   const listener = await new Promise((resolve) => { const s = server.listen(0, "127.0.0.1", () => resolve(s)); });
   const port = listener.address().port, a = new WebSocket(`ws://127.0.0.1:${port}`), b = new WebSocket(`ws://127.0.0.1:${port}`); await Promise.all([open(a), open(b)]);
   const made = next(a, "created"); a.send(JSON.stringify({ type: "create", gameId: "minesweeper-duel", playerName: "甲" })); const room = await made;
+  const waiting = next(a, "roomState"); assert.equal((await waiting).phase, "WAITING"); const waitingAction = next(a, "error"); a.send(JSON.stringify({ type: "gameAction", action: "place", cell: 0 })); assert.match((await waitingAction).message, /等待好友/);
   const starts = [next(a, "start"), next(b, "start")]; b.send(JSON.stringify({ type: "join", code: room.code, playerName: "乙" })); const [startA, startB] = await Promise.all(starts);
   assert.equal(typeof startA.token, "string"); assert.ok(startA.token); assert.equal(typeof startB.token, "string"); assert.ok(startB.token); assert.notEqual(startA.token, startB.token);
   for (const cell of Array.from({ length: 15 }, (_, i) => i)) a.send(JSON.stringify({ type: "gameAction", action: "place", cell }));
