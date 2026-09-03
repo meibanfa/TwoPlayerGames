@@ -7,7 +7,10 @@ const crypto = require("crypto");
 const { WebSocketServer } = require("ws");
 const Logic = require("./js/games/minesweeper-duel-logic");
 
-const PORT = Number(process.env.PORT) || 8777;
+const configuredPort = process.env.PORT === undefined ? 8777 : Number(process.env.PORT);
+if (!Number.isInteger(configuredPort) || configuredPort < 1 || configuredPort > 65_535) throw new Error("PORT must be an integer between 1 and 65535");
+const PORT = configuredPort;
+const HOST = process.env.HOST || "0.0.0.0";
 const ROOT = path.resolve(__dirname);
 const RECONNECT_GRACE_MS = Number(process.env.RECONNECT_GRACE_MS) || 45_000;
 const PLACEMENT_MS = Number(process.env.PLACEMENT_MS) || 45_000;
@@ -63,8 +66,10 @@ function removeMembership(ws) { const room = roomFor(ws); if (!room || room.play
 function allowCreate(ws) { const now = Date.now(); ws.createTimes = (ws.createTimes || []).filter((at) => now - at < CREATE_WINDOW_MS); const ip = ws.clientIp; const ipTimes = (ipCreates.get(ip) || []).filter((at) => now - at < CREATE_WINDOW_MS); if (ws.createTimes.length >= CREATE_LIMIT || ipTimes.length >= CREATE_LIMIT) return false; ws.createTimes.push(now); ipTimes.push(now); ipCreates.set(ip, ipTimes); return true; }
 
 const PUBLIC_FILES = new Set(["index.html", "styles.css", "js/main.js", "js/net.js", "js/registry.js", "js/games/minesweeper-duel.js", "js/games/minesweeper-duel-logic.js"]);
-const server = http.createServer((req, res) => { let requested; try { requested = decodeURIComponent((req.url || "/").split("?")[0]); } catch { res.writeHead(400); return res.end("Bad Request"); } if (requested === "/health") { res.writeHead(200, { "Content-Type": MIME[".json"] }); return res.end(JSON.stringify({ ok: true })); } const relative = requested === "/" ? "index.html" : requested.replace(/^\/+/, ""); if (!PUBLIC_FILES.has(relative)) { res.writeHead(404); return res.end("Not Found"); } const file = path.resolve(ROOT, relative); fs.readFile(file, (err, data) => { if (err) { res.writeHead(404); return res.end("Not Found"); } res.writeHead(200, { "Content-Type": MIME[path.extname(file)] || "application/octet-stream", "X-Content-Type-Options": "nosniff", "Cache-Control": "no-cache" }); res.end(data); }); });
+const server = http.createServer((req, res) => { let requested; try { requested = decodeURIComponent((req.url || "/").split("?")[0]); } catch { res.writeHead(400); return res.end("Bad Request"); } if (requested === "/health") { res.writeHead(200, { "Content-Type": MIME[".json"], "Cache-Control": "no-store" }); return res.end(JSON.stringify({ ok: true, uptimeSeconds: Math.floor(process.uptime()), rooms: rooms.size })); } const relative = requested === "/" ? "index.html" : requested.replace(/^\/+/, ""); if (!PUBLIC_FILES.has(relative)) { res.writeHead(404); return res.end("Not Found"); } const file = path.resolve(ROOT, relative); fs.readFile(file, (err, data) => { if (err) { res.writeHead(404); return res.end("Not Found"); } res.writeHead(200, { "Content-Type": MIME[path.extname(file)] || "application/octet-stream", "X-Content-Type-Options": "nosniff", "Cache-Control": "no-cache" }); res.end(data); }); });
 const wss = new WebSocketServer({ server, maxPayload: MAX_MESSAGE_BYTES });
+server.on("error", (error) => console.error(`[server] http error: ${error.stack || error.message}`));
+wss.on("error", (error) => console.error(`[server] websocket error: ${error.stack || error.message}`));
 wss.on("connection", (ws, req) => { const origin = req.headers.origin; if (origin && origin !== `http://${req.headers.host}` && origin !== `https://${req.headers.host}`) return ws.close(1008, "origin"); ws.clientIp = req.socket.remoteAddress || "unknown"; ws.on("message", (raw) => { let msg; try { msg = JSON.parse(raw); } catch { return sendError(ws, "消息格式无效。"); }
   if (msg === null || typeof msg !== "object" || Array.isArray(msg)) return sendError(ws, "消息格式无效。");
   if (msg.type === "create") { if (msg.gameId !== "minesweeper-duel") return sendError(ws, "当前只开放互坑扫雷。"); if (!allowCreate(ws)) return sendError(ws, "创建房间过于频繁，请稍后再试。"); removeMembership(ws); if (rooms.size >= MAX_ROOMS) return sendError(ws, "房间数量已达上限，请稍后再试。"); const code = makeCode(); if (!code) return sendError(ws, "暂时无法创建房间，请稍后再试。"); const room = { code, players: [ws, null], names: [cleanName(msg.playerName, "玩家 1"), null], tokens: [makeToken(), null], dcTimers: [null, null], state: newState() }; rooms.set(room.code, room); room.waitingTimer = setTimeout(() => { if (rooms.get(room.code) === room && !room.players[1]) { send(room.players[0], "error", { message: "房间等待超时，请重新创建。" }); removeMembership(room.players[0]); } }, WAITING_ROOM_TTL_MS); room.waitingTimer.unref?.(); ws.roomCode = room.code; ws.seat = 0; send(ws, "created", { code: room.code, token: room.tokens[0], gameId: "minesweeper-duel", seat: 0, playerNames: room.names }); send(ws, "roomState", { phase: "WAITING" }); return; }
@@ -75,5 +80,30 @@ wss.on("connection", (ws, req) => { const origin = req.headers.origin; if (origi
   if (msg.type === "leave") { removeMembership(ws); }
  }); ws.on("close", () => disconnect(ws)); });
 
-if (require.main === module) server.listen(PORT, () => console.log(`双人小游戏 server listening on ${PORT}`));
+if (require.main === module) {
+  let shuttingDown = false;
+  const shutdown = (signal) => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    console.log(`[server] received ${signal}; shutting down`);
+    const deadline = setTimeout(() => { console.error("[server] shutdown timed out"); process.exit(1); }, 10_000);
+    deadline.unref();
+    rooms.forEach((room) => {
+      clearTimeout(room.waitingTimer);
+      clearTimeout(room.placementTimer);
+      clearTimeout(room.finishTimer);
+      room.dcTimers.forEach(clearTimeout);
+    });
+    wss.clients.forEach((client) => client.close(1012, "server restart"));
+    server.close((error) => {
+      clearTimeout(deadline);
+      if (error) { console.error(`[server] shutdown error: ${error.stack || error.message}`); process.exit(1); }
+      console.log("[server] shutdown complete");
+      process.exit(0);
+    });
+  };
+  process.once("SIGTERM", () => shutdown("SIGTERM"));
+  process.once("SIGINT", () => shutdown("SIGINT"));
+  server.listen(PORT, HOST, () => console.log(`[server] 双人小游戏 listening on ${HOST}:${PORT} (${process.env.NODE_ENV || "development"})`));
+}
 module.exports = { server, rooms, Logic, finish };
