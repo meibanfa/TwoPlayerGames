@@ -1,77 +1,33 @@
-# 🚀 Hướng dẫn deploy để chơi online với bạn bè
+# Render 单实例部署
 
-Game cần một server chạy **Node.js + WebSocket**, nên **không thể** dùng GitHub Pages
-(chỉ phục vụ file tĩnh). Dưới đây là 2 cách: deploy lên web thật (Render), hoặc chia sẻ
-nhanh từ máy bạn (ngrok).
+互坑扫雷的房间和隐藏棋盘保存在 Node.js 进程内存中，因此必须部署为一个实例。不要开启自动扩缩容或增加实例数，也不需要数据库、Redis 或持久磁盘。
 
----
+## 创建服务
 
-## ✅ Cách 1: Render.com (khuyến nghị — miễn phí, có link cố định)
+1. 登录 Render，选择 **New → Blueprint**。
+2. 连接 `meibanfa/TwoPlayerGames`，让 Render 读取根目录的 `render.yaml`。
+3. 确认服务类型为 Web Service、实例数为 1、健康检查为 `/health`。
+4. 首次公开试玩分支可临时选择待测功能分支；正式更新应使用 `main`。
+5. 等待构建和健康检查通过，再访问 Render 提供的 HTTPS 地址。
 
-Repo đã có sẵn file `render.yaml` nên Render tự nhận cấu hình.
+也可以使用 [Render Blueprint](https://render.com/deploy?repo=https://github.com/meibanfa/TwoPlayerGames) 创建服务。创建服务需要 Render 账户授权；不要把 API key 或 deploy hook 写入仓库。
 
-1. Vào https://render.com và đăng nhập bằng tài khoản **GitHub**.
-2. Bấm **New +** → **Blueprint**.
-3. Chọn repo **tridpt/TwoPlayerGames**. Render sẽ đọc `render.yaml` và hiện service
-   `two-player-games`.
-4. Bấm **Apply** / **Create**. Render tự chạy `npm install` rồi `npm start`.
-5. Chờ vài phút, khi trạng thái chuyển sang **Live**, bạn sẽ có một link dạng:
-   ```
-   https://two-player-games-xxxx.onrender.com
-   ```
-6. Gửi link đó cho bạn bè. Một người **Tạo phòng** → gửi mã 4 số → người kia **Vào phòng**.
+## 运行模型
 
-> **Lưu ý gói free của Render:** server sẽ "ngủ" sau một thời gian không có ai truy cập.
-> Lần mở đầu tiên sau khi ngủ sẽ hơi lâu. Filesystem của gói free không phải nơi lưu dữ liệu
-> bền vững, vì vậy tài khoản/ELO có thể mất sau restart hoặc redeploy.
->
-> Muốn giữ tài khoản lâu dài, gắn **Persistent Disk** vào `/var/data` và đặt biến môi trường
-> `DATA_DIR=/var/data` (tính năng này có thể yêu cầu gói trả phí). Server lưu dữ liệu trong
-> `accounts.sqlite`; hãy sao lưu file này định kỳ.
+- Render 提供 HTTPS，并把同一公网端口上的 WSS 连接转发给 Node.js。
+- 服务监听平台注入的 `PORT`，默认监听地址为 `0.0.0.0`。
+- `/health` 返回进程状态、运行时间和当前房间数量。
+- 服务端每 30 秒发送 WebSocket ping；浏览器断线后按现有 token 流程重连。
+- Render 发送 `SIGTERM` 时，服务器停止接收新连接、关闭 WebSocket，并清理房间计时器。
 
-### Nếu không muốn dùng Blueprint
-Có thể tạo thủ công: **New +** → **Web Service** → chọn repo →
-- Build Command: `npm install`
-- Start Command: `npm start`
-- Instance Type: **Free**
+## 限制
 
----
+进程重启、重新部署或免费实例休眠会清空所有房间。正在进行的对局无法跨进程重启恢复。这是当前单实例、无数据库 MVP 的明确限制。Render 免费实例闲置后可能休眠，第一次访问需要等待冷启动。
 
-## ⚡ Cách 2: ngrok (chơi ngay, không cần deploy)
+发布后检查：
 
-Phù hợp khi muốn chơi liền mà không đăng ký host. Server vẫn chạy trên máy bạn,
-ngrok tạo một đường hầm công khai tới nó.
+```bash
+curl -fsS https://<service>.onrender.com/health
+```
 
-1. Cài ngrok: tải tại https://ngrok.com/download (hoặc `winget install ngrok.ngrok`).
-2. Đăng ký tài khoản ngrok (free) và lấy authtoken, chạy 1 lần:
-   ```
-   ngrok config add-authtoken <TOKEN_CỦA_BẠN>
-   ```
-3. Chạy server game ở máy bạn:
-   ```
-   npm start
-   ```
-4. Mở một cửa sổ terminal khác, chạy:
-   ```
-   ngrok http 8777
-   ```
-5. ngrok in ra một link dạng `https://xxxx.ngrok-free.app`. Gửi link đó cho bạn bè.
-
-> ngrok đã hỗ trợ WebSocket sẵn nên game chạy bình thường. Tắt terminal là link mất.
-
----
-
-## 🌐 Cách 3: Chơi trong cùng mạng LAN (không cần Internet)
-
-Nếu hai người chung một mạng Wi-Fi:
-1. Máy chủ chạy `npm start`.
-2. Tìm IP nội bộ của máy chủ (Windows: chạy `ipconfig`, tìm dòng *IPv4 Address*, ví dụ `192.168.1.10`).
-3. Người kia mở trình duyệt vào `http://192.168.1.10:8777`.
-
----
-
-## ⚠️ Về bảo mật
-
-Server có tài khoản cho đồng bộ hồ sơ/ELO, nhưng phòng thường vẫn được truy cập bằng mã phòng.
-Khi deploy public, hãy đặt `ALLOWED_ORIGINS` đúng domain, dùng mật khẩu cho phòng riêng và đặt
-`DATA_DIR` trên persistent disk. Khi chơi qua ngrok xong, hãy tắt tunnel nếu không còn dùng.
+健康响应成功后，使用两个独立浏览器/设备完成创建房间、加入、整局游戏、断线重连和再来一局。
