@@ -9,7 +9,7 @@
     ctx.boardEl.appendChild(root);
     const phaseEl = root.querySelector(".duel-phase"), subtitleEl = root.querySelector(".duel-subtitle"), statsEl = root.querySelector(".duel-stats"), boardEl = root.querySelector(".duel-board"), actions = root.querySelector(".duel-actions"), readyBtn = root.querySelector(".ready"), flagBtn = root.querySelector(".flag-mode"), finalEl = root.querySelector(".final-boards"), messageEl = root.querySelector(".duel-message");
     const cells = [];
-    let phase = "PLACING", placement = new Set(), revealed = new Map(), flags = new Set(), finalBoards = null, mistakes = 0, penalty = 0, progress = null, flagMode = false, placementDeadline = null, sweepStartedAt = null, summary = null, ready = false;
+    let phase = "PLACING", placement = new Set(), revealed = new Map(), flags = new Set(), finalBoards = null, mistakes = 0, penalty = 0, progress = null, flagMode = false, placementDeadline = null, sweepStartedAt = null, summary = null, ready = false, message = "", result = "", connectionMessage = "";
     for (let i = 0; i < L.BOARD_ROWS * L.BOARD_COLS; i++) {
       const cell = document.createElement("button"); cell.type = "button"; cell.className = "duel-cell"; cell.setAttribute("role", "gridcell");
       cell.addEventListener("click", () => { if (!(phase === "PLACING" && ready)) ctx.sendGameAction({ action: phase === "PLACING" ? "place" : (flagMode ? "flag" : "reveal"), cell: i }); });
@@ -31,8 +31,11 @@
       cells.forEach((el, i) => { el.className = "duel-cell"; el.textContent = ""; if (phase === "PLACING" && placement.has(i)) { el.classList.add("mine-preview"); el.textContent = "💣"; } else if (revealed.has(i)) { el.classList.add("revealed"); el.textContent = revealed.get(i) === "mine" ? "💣" : String(revealed.get(i)); } else if (flags.has(i)) { el.classList.add("flagged"); el.textContent = "🚩"; } else if (phase === "FINISHED" && finalBoards) { el.classList.add("revealed"); if (finalBoards.includes(i)) { el.textContent = "💣"; el.classList.add("mine-preview"); } } });
       finalEl.classList.toggle("hidden", phase !== "FINISHED" || !finalBoards);
       if (phase === "FINISHED" && finalBoards) finalEl.innerHTML = [["你扫的雷区", finalBoards[ctx.seat]], ["你给对手埋的雷区", finalBoards[1 - ctx.seat]]].map(([title, mines]) => `<section class="final-board"><h3>${title}</h3><div class="duel-board final-grid">${Array.from({ length: L.BOARD_ROWS * L.BOARD_COLS }, (_, i) => `<span class="duel-cell revealed${mines.includes(i) ? " mine-preview" : ""}">${mines.includes(i) ? "💣" : ""}</span>`).join("")}</div></section>`).join("");
+      const resultSummary = phase === "FINISHED" && summary ? `${result} 你的实际用时：${formatTime(summary[ctx.seat].elapsed)}，罚时：${summary[ctx.seat].penalty / 1000} 秒，失误：${summary[ctx.seat].mistakes}，有效用时：${formatTime(summary[ctx.seat].effectiveTime)}。对手实际用时：${formatTime(summary[1 - ctx.seat].elapsed)}，罚时：${summary[1 - ctx.seat].penalty / 1000} 秒，失误：${summary[1 - ctx.seat].mistakes}，有效用时：${formatTime(summary[1 - ctx.seat].effectiveTime)}。` : message;
+      messageEl.textContent = connectionMessage || resultSummary;
     }
     function receive(msg) {
+      const previousPhase = phase;
       if (msg.phase) phase = msg.phase;
       if (msg.placement) placement = new Set(msg.placement);
       if (msg.placementDeadline !== undefined) placementDeadline = msg.placementDeadline;
@@ -46,9 +49,10 @@
       if (msg.mistakes !== undefined) mistakes = msg.mistakes;
       if (msg.penalty !== undefined) penalty = msg.penalty;
       if (msg.progress) progress = msg.progress;
-      if (msg.message) messageEl.textContent = msg.message;
-      if (msg.result) messageEl.textContent = msg.result;
-      if (phase === "FINISHED" && summary) messageEl.textContent = `${msg.result || messageEl.textContent} 你的实际用时：${formatTime(summary[ctx.seat].elapsed)}，罚时：${summary[ctx.seat].penalty / 1000} 秒，失误：${summary[ctx.seat].mistakes}，有效用时：${formatTime(summary[ctx.seat].effectiveTime)}。对手实际用时：${formatTime(summary[1 - ctx.seat].elapsed)}，罚时：${summary[1 - ctx.seat].penalty / 1000} 秒，失误：${summary[1 - ctx.seat].mistakes}，有效用时：${formatTime(summary[1 - ctx.seat].effectiveTime)}。`;
+      if (Object.prototype.hasOwnProperty.call(msg, "message")) message = msg.message || "";
+      if (Object.prototype.hasOwnProperty.call(msg, "connectionMessage")) connectionMessage = msg.connectionMessage || "";
+      if (previousPhase === "PLACING" && phase === "SWEEPING") message = "";
+      if (msg.result) result = msg.result;
       render();
     }
     const tick = setInterval(() => { if (phase === "PLACING" || phase === "SWEEPING") render(); }, 1_000);

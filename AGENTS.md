@@ -25,14 +25,16 @@ Unit tests use `node:test` and `node:assert`. Name unit files `*.test.js`, serve
 
 ## Commit & Pull Request Guidelines
 
-History uses concise conventional prefixes: `feat:`, `fix:`, `test:`, `docs:`, `polish:`, `chore:`, and `ci:`. Keep commits focused and imperative. Pull requests should explain the change, link related issues, list commands run, and include screenshots for visible UI changes. Target `main` and call out protocol, persistence, security, or localization impacts explicitly.
+History uses concise conventional prefixes: `feat:`, `fix:`, `test:`, `docs:`, `polish:`, `chore:`, and `ci:`. Complete the entire requested milestone without stopping after a small subtask. During implementation, create several focused local commits (usually 3–8), but do not push them individually. Keep commits imperative and never rewrite pushed history.
+
+After the milestone is complete, run `npm run verify` and a fresh local GPT review over the full milestone range, always using the original milestone base for every review round. Fix every valid P0/P1/P2 finding in additional local commits, then repeat verification and fresh review until PASS. Only after PASS may the milestone feature branch be pushed and one pull request created or updated. Put later PR-review fixes on that same branch as new commits. Stop after updating the PR and wait for external ChatGPT review. Never merge automatically; the user controls merges and all direct pushes to `main`.
+
+Pull requests should explain the milestone, link related issues, list commands run, and include screenshots for visible UI changes. Target `main` and call out protocol, persistence, security, or localization impacts explicitly.
 
 ## Security & Configuration
 
 Never commit `.env`, `data/`, or Playwright artifacts. Hidden-information games must be server-authoritative: never send opponent mine coordinates in state, reconnect payloads, or progress messages. Preserve the extensible registry, room/reconnect infrastructure, and responsive UI.
 
-Every completed change set must be recorded in Git and delivered to GitHub after verification and independent review: create a focused commit, then either push the current branch or open/update a pull request. Do not leave completed work only in the local working tree. Never force-push, rewrite history, auto-merge a pull request, or include unrelated user changes. If authentication, branch protection, or reviewer findings block delivery, report the blocker clearly instead of claiming completion.
-
 ## Mandatory Review Gate
 
-After every meaningful code change, run deterministic verification and then launch a fresh independent review with `npm run review`. Inspect `.review/latest.md`; a reviewer failure or `BLOCK` result must be reported and resolved or explicitly surfaced before claiming the work is complete. Use `npm run review:cycle` when fixes and a bounded re-review are appropriate.
+At the end of every meaningful milestone, run deterministic verification and launch a fresh independent review with an explicit original milestone base, for example `npm run review -- --base <milestone-base>`. Inspect `.review/latest.md`; reviewer failure or `BLOCK` is not approval. The current `review:cycle` command does not pin a base, so do not use it as the milestone gate; run each review round explicitly with the same base. Do not push before PASS, and do not merge after opening or updating the milestone PR.

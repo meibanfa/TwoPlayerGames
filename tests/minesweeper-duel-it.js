@@ -1,6 +1,6 @@
 "use strict";
 const assert = require("node:assert/strict");
-const { server } = require("../server");
+const { server, rooms } = require("../server");
 const WebSocket = require("ws");
 function next(ws, type) { return new Promise((resolve, reject) => { const t = setTimeout(() => reject(new Error(`timeout ${type}`)), 3000); ws.on("message", function on(raw) { const m = JSON.parse(raw); if (m.type === type) { clearTimeout(t); ws.off("message", on); resolve(m); } }); }); }
 async function open(ws) { await new Promise((resolve, reject) => { ws.once("open", resolve); ws.once("error", reject); }); }
@@ -11,6 +11,7 @@ async function open(ws) { await new Promise((resolve, reject) => { ws.once("open
   assert.equal((await waiting).phase, "WAITING"); const waitingAction = next(a, "error"); a.send(JSON.stringify({ type: "gameAction", action: "place", cell: 0 })); assert.match((await waitingAction).message, /等待好友/);
   const starts = [next(a, "start"), next(b, "start")]; b.send(JSON.stringify({ type: "join", code: room.code, playerName: "乙" })); const [startA, startB] = await Promise.all(starts);
   assert.equal(typeof startA.token, "string"); assert.ok(startA.token); assert.equal(typeof startB.token, "string"); assert.ok(startB.token); assert.notEqual(startA.token, startB.token);
+  const originalPlayers = rooms.get(room.code).players.slice(); const seatSwitch = next(a, "error"); a.send(JSON.stringify({ type: "rejoin", code: room.code, seat: 1, token: startB.token })); assert.match((await seatSwitch).message, /重连失败/); assert.equal(rooms.get(room.code).players[0], originalPlayers[0], "seat 0 membership changed"); assert.equal(rooms.get(room.code).players[1], originalPlayers[1], "seat 1 membership changed");
   for (const cell of Array.from({ length: 15 }, (_, i) => i)) a.send(JSON.stringify({ type: "gameAction", action: "place", cell }));
   for (const cell of Array.from({ length: 15 }, (_, i) => i + 20)) b.send(JSON.stringify({ type: "gameAction", action: "place", cell }));
   const sweep = next(a, "gameState"); a.send(JSON.stringify({ type: "gameAction", action: "ready" })); b.send(JSON.stringify({ type: "gameAction", action: "ready" })); const state = await sweep;
