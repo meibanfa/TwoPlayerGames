@@ -21,7 +21,7 @@ function coordinateSets(value, key = "", found = []) {
 function containsMineSet(value, mines) { return coordinateSets(value).some((cells) => { const unique = new Set(cells); return mines.every((cell) => unique.has(cell)); }); }
 
 test("two browsers play a deterministic match and rematch", async ({ browser }) => {
-  const aContext = await browser.newContext({ serviceWorkers: "block" }); const bContext = await browser.newContext({ serviceWorkers: "block" }); const a = await aContext.newPage(); const b = await bContext.newPage();
+  const aContext = await browser.newContext({ serviceWorkers: "block" }); const bContext = await browser.newContext({ serviceWorkers: "block" }); const a = await aContext.newPage(); let b = await bContext.newPage();
   try {
     await create(a, "甲"); const code = (await a.locator("#roomLabel").textContent()).match(/\d{4}/)[0]; await join(b, code, "乙"); await expect(a.locator(".duel-phase")).toHaveText("布雷阶段");
     await place(a, Array.from({ length: 15 }, (_, i) => i)); await place(b, Array.from({ length: 15 }, (_, i) => i + 20)); await expect(a.locator(".duel-phase")).toHaveText("扫雷阶段"); await expect(b.locator(".duel-phase")).toHaveText("扫雷阶段");
@@ -32,6 +32,7 @@ test("two browsers play a deterministic match and rematch", async ({ browser }) 
     await expect(a.locator(".final-board").nth(0).locator("h3")).toHaveText("你扫的雷区"); await expect(a.locator(".final-board").nth(1).locator("h3")).toHaveText("你给对手埋的雷区");
     expect(await a.locator(".final-board").nth(0).locator(".mine-preview").evaluateAll((nodes) => nodes.map((node) => Array.from(node.parentElement.children).indexOf(node)))).toEqual(Array.from({ length: 15 }, (_, i) => i + 20));
     expect(await a.locator(".final-board").nth(1).locator(".mine-preview").evaluateAll((nodes) => nodes.map((node) => Array.from(node.parentElement.children).indexOf(node)))).toEqual(Array.from({ length: 15 }, (_, i) => i));
+    const resultText = await a.locator(".duel-message").textContent(); await b.close(); await expect(a.locator(".duel-message")).toContainText("对手暂时断开"); b = await bContext.newPage(); await b.goto("/"); await expect(b.locator("#gameView")).toBeVisible(); await expect(a.locator(".duel-message")).toHaveText(resultText);
     await a.locator("#restartBtn").click(); await b.locator("#restartBtn").click(); await expect(a.locator(".duel-phase")).toHaveText("布雷阶段"); await expect(a.locator(".duel-stats")).toContainText("已埋：0 / 15");
   } finally { await aContext.close(); await bContext.close(); }
 });
