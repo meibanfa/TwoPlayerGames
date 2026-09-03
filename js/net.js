@@ -54,7 +54,7 @@ window.Net = (function () {
       ws = new WebSocket(url());
       let settled = false;
       ws.onopen = () => { attempts = 0; settled = true; emit("netup"); resolve(); };
-      ws.onerror = () => { if (!settled) reject(new Error("Không kết nối được tới server.")); };
+      ws.onerror = () => { if (!settled) reject(new Error("无法连接服务器。")); };
       ws.onclose = () => { emit("netdown"); if (reconnectAllowed) scheduleReconnect(); };
       ws.onmessage = (ev) => {
         let msg; try { msg = JSON.parse(ev.data); } catch { return; }

@@ -1,22 +1,19 @@
-# Changelog
+# 更新日志
 
-Tất cả thay đổi đáng chú ý của dự án sẽ được ghi lại ở đây.
+本项目的重要变化记录于此。
 
-Định dạng theo [Keep a Changelog](https://keepachangelog.com/vi/1.0.0/),
-và dự án tuân theo [Semantic Versioning](https://semver.org/lang/vi/).
+## 尚未发布
 
-## [Chưa phát hành]
+### 新增
 
-### Đã thay đổi
-- Giao diện chuyển sang tông "Cozy Warm" (gỗ & giấy): mặc định là nền gỗ espresso
-  ấm với chữ kem sáng, thay cho tông tím than trước đây.
-- Nút đổi giao diện (🌙) chuyển giữa "gỗ tối" và "giấy sáng"; khu vực chơi game
-  luôn giữ nền gỗ tối để chữ trên bàn cờ dễ đọc ở cả hai chế độ.
-- Font tiêu đề đổi sang serif "Fraunces", chữ thân dùng "Nunito Sans".
-- Bảng màu nhấn đổi sang tông đất: terracotta, teal cổ, mù tạt, olive.
-- Đồng bộ tông màu cho toàn bộ bàn cờ của các game (nền gỗ ấm thay cho navy tối).
-- Cập nhật swatch của preset màu mặc định cho khớp tông gỗ mới.
+- 第二款在线游戏“遗忘的地雷”：11×11 记忆布雷、轮流寻宝、动态邻雷计分和踩雷强制重入。
+- 遗忘的地雷纯逻辑、服务器权威状态机、隐藏信息 WebSocket 集成测试及双浏览器 Playwright 流程。
 
-## [1.1.0]
+### 变更
 
-- Bộ 76 trò chơi 2 người: chơi chung máy, đấu với máy (AI), hoặc online qua mã phòng.
+- 首页、房间协议、会话恢复和双票重开改为注册表驱动的多游戏平台。
+- 游戏服务器使用独立处理器及按席位公开状态序列化器。
+
+## 1.1.0
+
+- 将项目精简为简体中文“双人小游戏”平台，并加入互坑扫雷。
