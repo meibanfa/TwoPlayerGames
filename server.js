@@ -42,15 +42,15 @@ function publicState(room, seat) {
 function emitState(room, seat) { send(room.players[seat], "gameState", publicState(room, seat)); }
 function emitProgress(room) { room.players.forEach((p, seat) => send(p, "progress", { mine: safeRevealCount(room.state, seat), opponent: safeRevealCount(room.state, 1 - seat), total: Logic.BOARD_ROWS * Logic.BOARD_COLS - Logic.MINE_COUNT, opponentMistakes: room.state.mistakes[1 - seat] })); }
 function beginSweep(room) { const p = room.state; p.phase = "SWEEPING"; p.sweepStartedAt = Date.now(); p.placementDeadline = null; p.boards = [new Set(p.placements[1]), new Set(p.placements[0])]; p.counts = p.boards.map((b) => Logic.mineCounts([...b])); room.players.forEach((_, seat) => emitState(room, seat)); emitProgress(room); }
-function autoPlacement(room) { const p = room.state; if (p.phase !== "PLACING" && p.phase !== "WAITING_FOR_READY") return; p.placements.forEach((set, seat) => { while (set.size < Logic.MINE_COUNT) set.add(crypto.randomInt(0, Logic.BOARD_ROWS * Logic.BOARD_COLS)); p.ready[seat] = true; }); beginSweep(room); }
+function autoPlacement(room) { const p = room.state; if (p.phase !== "PLACING") return; p.placements.forEach((set, seat) => { while (set.size < Logic.MINE_COUNT) set.add(crypto.randomInt(0, Logic.BOARD_ROWS * Logic.BOARD_COLS)); p.ready[seat] = true; }); beginSweep(room); }
 function finalize(room) { const p = room.state; if (p.phase === "FINISHED") return; const effective = p.completedAt.map((at, i) => at === null ? Infinity : at - p.sweepStartedAt + p.penalty[i]); p.phase = "FINISHED"; p.finishedAt = Date.now(); p.winner = effective[0] === effective[1] ? null : (effective[0] < effective[1] ? 0 : 1); p.summary = finishSummary(p); broadcast(room, "gameFinished", { winner: p.winner, boards: p.boards.map((b) => [...b]), summary: p.summary }); room.players.forEach((_, i) => emitState(room, i)); }
 function finish(room, seat) { const p = room.state; if (p.phase !== "SWEEPING" || p.completedAt[seat] !== null || !Logic.isComplete(p.revealed[seat], p.boards[seat])) return; p.completedAt[seat] = Date.now(); send(room.players[seat], "playerFinished", {}); if (p.completedAt[0] !== null && p.completedAt[1] !== null) { clearTimeout(room.finishTimer); return finalize(room); } room.finishTimer = setTimeout(() => finalize(room), FINISH_WINDOW_MS); }
 function handleAction(room, ws, msg) {
   const seat = ws.seat, p = room.state, action = msg.action;
   if (p.phase === "WAITING") return sendError(ws, "请等待好友加入。");
-  if (p.phase === "PLACING" || p.phase === "WAITING_FOR_READY") {
+  if (p.phase === "PLACING") {
     if (action === "place") { if (!validCell(msg.cell) || p.ready[seat]) return sendError(ws, "无法修改布雷。"); const set = p.placements[seat]; if (set.has(msg.cell)) set.delete(msg.cell); else if (set.size >= Logic.MINE_COUNT) return sendError(ws, "最多只能埋 15 颗雷。"); else set.add(msg.cell); return send(ws, "placementState", { count: set.size, placement: [...set] }); }
-    if (action === "ready") { if (p.placements[seat].size !== Logic.MINE_COUNT) return sendError(ws, "请先埋满 15 颗雷。"); p.ready[seat] = true; p.phase = "WAITING_FOR_READY"; send(ws, "placementLocked", {}); broadcast(room, "placementProgress", { ready: p.ready }); if (p.ready.every(Boolean)) beginSweep(room); return; }
+    if (action === "ready") { if (p.placements[seat].size !== Logic.MINE_COUNT || p.ready[seat]) return sendError(ws, "请先埋满 15 颗雷。"); p.ready[seat] = true; send(ws, "placementLocked", {}); broadcast(room, "placementProgress", { ready: p.ready }); if (p.ready.every(Boolean)) beginSweep(room); return; }
     return;
   }
   if (p.phase !== "SWEEPING" || p.completedAt[seat] !== null || !validCell(msg.cell)) return sendError(ws, "当前不能进行这个操作。");

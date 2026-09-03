@@ -14,7 +14,7 @@ npm run review
 
 This sequence is mandatory after every meaningful implementation milestone: finish the code, run verification, then run `npm run review` automatically before reporting completion. Never treat an unavailable or failed reviewer as approval.
 
-After every completed change set, update Git and submit it for review: commit and push the current branch, or push a feature branch and open a pull request. Do not leave completed implementation work only in the local working tree, and never force-push or rewrite history. Do not push an incomplete or blocked milestone.
+After verification and a fresh independent PASS, every completed change set must be committed and delivered to GitHub. Push the current branch when direct updates are appropriate; otherwise create or update a pull request. Never force-push, rewrite history, or auto-merge. If delivery is blocked, report it explicitly rather than leaving the work silently local.
 
 Or run the bounded autonomous sequence:
 
@@ -22,7 +22,7 @@ Or run the bounded autonomous sequence:
 npm run review:cycle
 ```
 
-`review:cycle` verifies first, runs a fresh read-only reviewer, launches a fresh write-enabled fixer for BLOCK findings, verifies again, and reviews again (two rounds by default; set `MAX_REVIEW_ROUNDS=3` to allow three). It never commits, pushes, resets, or discards changes.
+`review:cycle` verifies first, runs a fresh read-only reviewer, launches a fresh write-enabled fixer for BLOCK findings, verifies again, and reviews again (two rounds by default; set `MAX_REVIEW_ROUNDS=3` to allow three). The command itself never commits, pushes, resets, or discards changes; after it passes, the calling agent must commit and push or submit a pull request.
 
 ## Review scope
 

@@ -5,14 +5,14 @@
   function create(ctx) {
     const root = document.createElement("section");
     root.className = "duel-game";
-    root.innerHTML = `<div class="duel-phase"></div><p class="duel-subtitle"></p><div class="duel-stats"></div><div class="duel-board" role="grid"></div><div class="duel-actions"><button class="btn flag-mode" type="button">🚩 插旗</button><button class="btn ready" type="button">完成布雷</button></div><p class="duel-message"></p>`;
+    root.innerHTML = `<div class="duel-phase"></div><p class="duel-subtitle"></p><div class="duel-stats"></div><div class="duel-board" role="grid"></div><div class="duel-actions"><button class="btn flag-mode" type="button">🚩 插旗</button><button class="btn ready" type="button">完成布雷</button></div><div class="final-boards hidden"></div><p class="duel-message"></p>`;
     ctx.boardEl.appendChild(root);
-    const phaseEl = root.querySelector(".duel-phase"), subtitleEl = root.querySelector(".duel-subtitle"), statsEl = root.querySelector(".duel-stats"), boardEl = root.querySelector(".duel-board"), actions = root.querySelector(".duel-actions"), readyBtn = root.querySelector(".ready"), flagBtn = root.querySelector(".flag-mode"), messageEl = root.querySelector(".duel-message");
+    const phaseEl = root.querySelector(".duel-phase"), subtitleEl = root.querySelector(".duel-subtitle"), statsEl = root.querySelector(".duel-stats"), boardEl = root.querySelector(".duel-board"), actions = root.querySelector(".duel-actions"), readyBtn = root.querySelector(".ready"), flagBtn = root.querySelector(".flag-mode"), finalEl = root.querySelector(".final-boards"), messageEl = root.querySelector(".duel-message");
     const cells = [];
-    let phase = "PLACING", placement = new Set(), revealed = new Map(), flags = new Set(), finalBoards = null, mistakes = 0, penalty = 0, progress = null, flagMode = false, placementDeadline = null, sweepStartedAt = null, summary = null;
+    let phase = "PLACING", placement = new Set(), revealed = new Map(), flags = new Set(), finalBoards = null, mistakes = 0, penalty = 0, progress = null, flagMode = false, placementDeadline = null, sweepStartedAt = null, summary = null, ready = false;
     for (let i = 0; i < L.BOARD_ROWS * L.BOARD_COLS; i++) {
       const cell = document.createElement("button"); cell.type = "button"; cell.className = "duel-cell"; cell.setAttribute("role", "gridcell");
-      cell.addEventListener("click", () => ctx.sendGameAction({ action: phase === "PLACING" ? "place" : (flagMode ? "flag" : "reveal"), cell: i }));
+      cell.addEventListener("click", () => { if (!(phase === "PLACING" && ready)) ctx.sendGameAction({ action: phase === "PLACING" ? "place" : (flagMode ? "flag" : "reveal"), cell: i }); });
       cell.addEventListener("contextmenu", (e) => { e.preventDefault(); ctx.sendGameAction({ action: "flag", cell: i }); });
       boardEl.appendChild(cell); cells.push(cell);
     }
@@ -21,12 +21,16 @@
 
     function render() {
       phaseEl.textContent = phase === "PLACING" ? "布雷阶段" : phase === "SWEEPING" ? "扫雷阶段" : phase === "FINISHED" ? "比赛结束" : "等待好友";
-      subtitleEl.textContent = phase === "PLACING" ? "在棋盘上为对手埋下 15 颗雷。" : phase === "SWEEPING" ? "这是对手为你准备的雷区。" : "和朋友开个房间，来一局。";
+      subtitleEl.textContent = phase === "PLACING" ? (ready ? "等待对手完成布雷…" : "在棋盘上为对手埋下 15 颗雷。") : phase === "SWEEPING" ? "这是对手为你准备的雷区。" : "和朋友开个房间，来一局。";
       const now = Date.now();
-      const timer = phase === "PLACING" ? `剩余时间：${Math.max(0, Math.ceil((placementDeadline - now) / 1000) || 0)} 秒` : phase === "SWEEPING" || phase === "FINISHED" ? `用时：${formatTime(Math.max(0, now - sweepStartedAt || 0))}` : "";
+      const elapsed = phase === "FINISHED" && summary ? summary[ctx.seat].elapsed : Math.max(0, now - sweepStartedAt || 0);
+      const timer = phase === "PLACING" ? `剩余时间：${Math.max(0, Math.ceil((placementDeadline - now) / 1000) || 0)} 秒` : phase === "SWEEPING" || phase === "FINISHED" ? `用时：${formatTime(elapsed)}` : "";
       statsEl.textContent = phase === "PLACING" ? `已埋：${placement.size} / ${L.MINE_COUNT} ${timer}` : `你的进度：${progress ? progress[0] : revealed.size} / ${L.BOARD_ROWS * L.BOARD_COLS - L.MINE_COUNT} ${timer} 失误：${mistakes} 罚时：${penalty / 1000} 秒`;
-      actions.classList.toggle("hidden", phase !== "PLACING" && phase !== "SWEEPING"); readyBtn.classList.toggle("hidden", phase !== "PLACING"); flagBtn.classList.toggle("hidden", phase !== "SWEEPING"); readyBtn.disabled = placement.size !== L.MINE_COUNT;
+      actions.classList.toggle("hidden", (phase !== "PLACING" && phase !== "SWEEPING") || (phase === "PLACING" && ready)); readyBtn.classList.toggle("hidden", phase !== "PLACING"); flagBtn.classList.toggle("hidden", phase !== "SWEEPING"); readyBtn.disabled = placement.size !== L.MINE_COUNT || ready;
+      boardEl.classList.toggle("hidden", phase === "FINISHED");
       cells.forEach((el, i) => { el.className = "duel-cell"; el.textContent = ""; if (phase === "PLACING" && placement.has(i)) { el.classList.add("mine-preview"); el.textContent = "💣"; } else if (revealed.has(i)) { el.classList.add("revealed"); el.textContent = revealed.get(i) === "mine" ? "💣" : String(revealed.get(i)); } else if (flags.has(i)) { el.classList.add("flagged"); el.textContent = "🚩"; } else if (phase === "FINISHED" && finalBoards) { el.classList.add("revealed"); if (finalBoards.includes(i)) { el.textContent = "💣"; el.classList.add("mine-preview"); } } });
+      finalEl.classList.toggle("hidden", phase !== "FINISHED" || !finalBoards);
+      if (phase === "FINISHED" && finalBoards) finalEl.innerHTML = [["你扫的雷区", finalBoards[ctx.seat]], ["你给对手埋的雷区", finalBoards[1 - ctx.seat]]].map(([title, mines]) => `<section class="final-board"><h3>${title}</h3><div class="duel-board final-grid">${Array.from({ length: L.BOARD_ROWS * L.BOARD_COLS }, (_, i) => `<span class="duel-cell revealed${mines.includes(i) ? " mine-preview" : ""}">${mines.includes(i) ? "💣" : ""}</span>`).join("")}</div></section>`).join("");
     }
     function receive(msg) {
       if (msg.phase) phase = msg.phase;
@@ -37,7 +41,8 @@
       if (msg.revealedSnapshot) revealed = new Map(msg.revealedSnapshot.map((x) => [x.cell, x.mine ? "mine" : x.count]));
       if (msg.revealedDelta) msg.revealedDelta.forEach((x) => revealed.set(x.cell, x.mine ? "mine" : x.count));
       if (msg.flags) flags = new Set(msg.flags);
-      if (msg.boards) finalBoards = msg.boards[ctx.seat] || [];
+      if (msg.ready !== undefined) ready = msg.ready;
+      if (msg.boards) finalBoards = msg.boards;
       if (msg.mistakes !== undefined) mistakes = msg.mistakes;
       if (msg.penalty !== undefined) penalty = msg.penalty;
       if (msg.progress) progress = msg.progress;

@@ -31,7 +31,7 @@ History uses concise conventional prefixes: `feat:`, `fix:`, `test:`, `docs:`, `
 
 Never commit `.env`, `data/`, or Playwright artifacts. Hidden-information games must be server-authoritative: never send opponent mine coordinates in state, reconnect payloads, or progress messages. Preserve the extensible registry, room/reconnect infrastructure, and responsive UI.
 
-After every completed change set, update Git and submit it for review: commit and push the current branch, or push a feature branch and open a pull request. Never leave completed implementation work only in the local working tree. Do not rewrite history or force-push.
+Every completed change set must be recorded in Git and delivered to GitHub after verification and independent review: create a focused commit, then either push the current branch or open/update a pull request. Do not leave completed work only in the local working tree. Never force-push, rewrite history, auto-merge a pull request, or include unrelated user changes. If authentication, branch protection, or reviewer findings block delivery, report the blocker clearly instead of claiming completion.
 
 ## Mandatory Review Gate
 
