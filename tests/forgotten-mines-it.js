@@ -203,6 +203,65 @@ async function leaveAll(...sockets) {
     assert.equal(room.state.exhaustedSafeCells.size, 0);
     assert.equal(room.state.collectedTreasures.length, 0);
 
+    const collisionMatch = await createAndJoin(url, "forgotten-mines", ["重入甲", "占位乙"]); live.push(collisionMatch.a, collisionMatch.b);
+    const collisionRoom = rooms.get(collisionMatch.created.code);
+    collisionRoom.state.phase = "PLAYING";
+    collisionRoom.state.confirmed = [true, true];
+    collisionRoom.state.placementDeadline = null;
+    collisionRoom.state.positions = [40, 21];
+    collisionRoom.state.scores = [3, 4];
+    collisionRoom.state.currentTurn = 1;
+    collisionRoom.state.placements = [new Set([30]), new Set()];
+    const collisionSockets = [collisionMatch.a, collisionMatch.b];
+
+    const homeMoveStates = collisionSockets.map((socket) => next(socket, "gameState", (message) => message.currentTurn === 0));
+    send(collisionSockets[1], "gameAction", { action: "move", cell: L.START_CELLS[0] });
+    const homeMove = await Promise.all(homeMoveStates);
+    assert.deepEqual(collisionRoom.state.positions, [40, L.START_CELLS[0]]);
+    homeMove.forEach((state) => assert.deepEqual(state.positions, [40, L.START_CELLS[0]]));
+
+    const collisionScores = [...collisionRoom.state.scores];
+    const collisionExhausted = new Set(collisionRoom.state.exhaustedSafeCells);
+    const occupiedHomeReentryStates = collisionSockets.map((socket) => next(socket, "gameState", (message) => message.phase === "REENTRY"));
+    send(collisionSockets[0], "gameAction", { action: "move", cell: 30 });
+    const occupiedHomeReentry = await Promise.all(occupiedHomeReentryStates);
+    assert.deepEqual(collisionRoom.state.positions, [null, L.START_CELLS[0]]);
+    assert.equal(collisionRoom.state.pendingReentrySeat, 0);
+    assert.equal(collisionRoom.state.scores[0], collisionScores[0] - 5);
+    occupiedHomeReentry.forEach((state) => {
+      assert.deepEqual(state.positions, [null, L.START_CELLS[0]]);
+      assert.equal(new Set(state.positions.filter(L.isCell)).size, state.positions.filter(L.isCell).length);
+      assertNoPlacement(state);
+    });
+
+    await close(collisionSockets[0]);
+    const collisionRestored = await open(url); live.push(collisionRestored);
+    const collisionRejoinP = next(collisionRestored, "rejoined");
+    send(collisionRestored, "rejoin", { code: collisionRoom.code, seat: 0, token: collisionMatch.starts[0].token });
+    const collisionRejoin = await collisionRejoinP;
+    assert.equal(collisionRejoin.state.phase, "REENTRY");
+    assert.deepEqual(collisionRejoin.state.positions, [null, L.START_CELLS[0]]);
+    assert.equal(new Set(collisionRejoin.state.positions.filter(L.isCell)).size, collisionRejoin.state.positions.filter(L.isCell).length);
+    assertNoPlacement(collisionRejoin.state);
+    collisionSockets[0] = collisionRestored;
+    collisionMatch.a = collisionRestored;
+
+    const reentryScores = [...collisionRoom.state.scores];
+    const collisionReentryCell = 9;
+    assert.equal(L.legalReentryCells(0, collisionRoom.state.positions[1]).includes(collisionReentryCell), true);
+    assert.equal(collisionExhausted.has(collisionReentryCell), false);
+    const completedReentryStates = collisionSockets.map((socket) => next(socket, "gameState", (message) => message.phase === "PLAYING" && message.currentTurn === 1));
+    send(collisionSockets[0], "gameAction", { action: "reenter", cell: collisionReentryCell });
+    const completedReentry = await Promise.all(completedReentryStates);
+    assert.deepEqual(collisionRoom.state.positions, [collisionReentryCell, L.START_CELLS[0]]);
+    assert.deepEqual(collisionRoom.state.scores, reentryScores);
+    assert.deepEqual(collisionRoom.state.exhaustedSafeCells, collisionExhausted);
+    completedReentry.forEach((state) => {
+      assert.deepEqual(state.positions, [collisionReentryCell, L.START_CELLS[0]]);
+      assert.deepEqual(state.scores, reentryScores);
+      assert.equal(state.exhaustedSafeCells.includes(collisionReentryCell), false);
+    });
+
     const timeoutMatch = await createAndJoin(url, "forgotten-mines", ["超时甲", "超时乙"]); live.push(timeoutMatch.a, timeoutMatch.b);
     const timeoutRoom = rooms.get(timeoutMatch.created.code);
     timeoutRoom.state.placements[0] = new Set(sharedPlacement);
@@ -247,7 +306,7 @@ async function leaveAll(...sockets) {
 
     const postConfirmFrames = forgottenFrames.flat().filter((message) => ["PLAYING", "REENTRY", "FINISHED"].includes(message.phase) || message.type === "gameFinished");
     postConfirmFrames.forEach(assertNoPlacement);
-    await leaveAll(unsupported, minesRoom.a, minesRoom.b, match.a, match.b, timeoutMatch.a, timeoutMatch.b, bothFail.a, bothFail.b, bothReady.a, bothReady.b, expiring.a);
+    await leaveAll(unsupported, minesRoom.a, minesRoom.b, match.a, match.b, collisionMatch.a, collisionMatch.b, timeoutMatch.a, timeoutMatch.b, bothFail.a, bothFail.b, bothReady.a, bothReady.b, expiring.a);
     console.log("ok online: multi-game forgotten-mines authority, secrecy, timeout, reconnect, and restart");
   } finally {
     await Promise.allSettled(live.map(close));

@@ -77,7 +77,7 @@
     }
     function cellContents(cell) {
       const markers = [];
-      positions.forEach((position, seat) => { if (position === cell) markers.push(seat === 0 ? "🔴" : "🟢"); });
+      positions.forEach((position, seat) => { if (L.isCell(position) && position === cell) markers.push(seat === 0 ? "🔴" : "🟢"); });
       const treasure = L.TREASURE_CELLS.includes(cell);
       const collected = collectedTreasures.some((item) => item.cell === cell);
       if (treasure) markers.push(collected ? "📭" : "🎁");
@@ -179,7 +179,7 @@
     howTo: [
       "双方在 11×11 棋盘各埋 15 颗雷，可以把雷埋在同一格。确认后雷图会立即消失，请凭记忆行动。",
       "轮到你时可向八个方向移动一格。新安全格按周围剩余地雷总数得分；安全格全局只结算一次，宝物依次奖励 10、15、20 分。",
-      "踩雷扣 5 分，所有该格地雷都会消失。你会回到起点，并必须从起点旁选择保护格重新入场；重入不结算格子。",
+      "踩雷扣 5 分，所有该格地雷都会消失。你的棋子会暂时离开棋盘，并必须从起点旁选择保护格重新入场；重入不结算格子。",
       "第三个宝物被找到后立即结束，分数更高者获胜，同分为平局。比赛结束也不会公开完整雷图。",
     ],
     create,

@@ -26,6 +26,7 @@ test("coordinates and eight-neighborhood handle corners and center", () => {
 
 test("normal movement is one Chebyshev step and cannot collide", () => {
   assert.equal(L.isLegalNormalMove(60, 48, 0), true);
+  assert.equal(L.isLegalNormalMove(null, 48, 0), false);
   assert.equal(L.isLegalNormalMove(60, 61, 61), false);
   assert.equal(L.isLegalNormalMove(60, 60, 0), false);
   assert.equal(L.isLegalNormalMove(60, 62, 0), false);

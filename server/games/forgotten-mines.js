@@ -138,7 +138,7 @@ function createForgottenMines(deps) {
     if (hit) {
       state.placements = hit.mineSets;
       state.scores = hit.scores;
-      state.positions[seat] = Logic.START_CELLS[seat];
+      state.positions[seat] = null;
       state.phase = "REENTRY";
       state.pendingReentrySeat = seat;
       state.detonatedCells.add(message.cell);
