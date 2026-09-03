@@ -5,8 +5,8 @@ const externalBaseURL = process.env.PLAYWRIGHT_BASE_URL;
 
 module.exports = defineConfig({
   testDir: "./tests/e2e",
-  timeout: 30_000,
-  expect: { timeout: 8_000 },
+  timeout: externalBaseURL ? 90_000 : 30_000,
+  expect: { timeout: externalBaseURL ? 45_000 : 8_000 },
   fullyParallel: false,
   retries: process.env.CI ? 1 : 0,
   reporter: process.env.CI ? [["github"], ["html", { open: "never" }]] : "list",

@@ -70,7 +70,7 @@ test("refresh reconnects the same seat without leaking the opponent board", asyn
 
 test("guest refresh reconnects with its own credential and restores the server snapshot", async ({ browser }) => {
   const aContext = await browser.newContext({ serviceWorkers: "block" }); const bContext = await browser.newContext({ serviceWorkers: "block" }); const a = await aContext.newPage(); const b = await bContext.newPage();
-  try { await create(a, "甲"); const code = (await a.locator("#roomLabel").textContent()).match(/\d{4}/)[0]; await join(b, code, "乙"); await place(a, Array.from({ length: 15 }, (_, i) => i)); await place(b, Array.from({ length: 15 }, (_, i) => i + 20)); await b.locator(".duel-cell").nth(19).click(); await expect(b.locator(".duel-cell").nth(19)).toHaveText(/^[0-8]$/); await b.reload(); await expect(b.locator("#gameView")).toBeVisible(); await expect(b.locator(".duel-cell").nth(19)).toHaveText(/^[0-8]$/);  } finally { await aContext.close(); await bContext.close(); }
+  try { await create(a, "甲"); const code = (await a.locator("#roomLabel").textContent()).match(/\d{4}/)[0]; await join(b, code, "乙"); await place(a, Array.from({ length: 15 }, (_, i) => i)); await place(b, Array.from({ length: 15 }, (_, i) => i + 20)); await expect(b.locator(".duel-phase")).toHaveText("扫雷阶段"); await b.locator(".duel-cell").nth(19).click(); await expect(b.locator(".duel-cell").nth(19)).toHaveText(/^[0-8]$/); await b.reload(); await expect(b.locator("#gameView")).toBeVisible(); await expect(b.locator(".duel-cell").nth(19)).toHaveText(/^[0-8]$/);  } finally { await aContext.close(); await bContext.close(); }
 });
 
 test("placement reconnect keeps the unready player editable and the ready player locked", async ({ browser }) => {
