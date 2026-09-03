@@ -2,7 +2,7 @@
 /* global document, window */
 const { test, expect } = require("@playwright/test");
 
-async function home(page) { await page.goto("/"); await page.getByRole("button", { name: "开始游戏" }).click(); }
+async function home(page) { await page.goto("/"); await page.locator(".game-card").filter({ hasText: "互坑扫雷" }).getByRole("button", { name: "开始游戏" }).click(); }
 async function create(page, name) { await home(page); await page.locator("#createName").fill(name); await page.locator("#createForm button").click(); await expect(page.locator("#gameView")).toBeVisible(); await expect(page.locator(".duel-phase")).toHaveText("等待好友"); }
 async function join(page, code, name) { await home(page); await page.locator("#joinName").fill(name); await page.locator("#roomCode").fill(code); await page.locator("#joinForm button").click(); await expect(page.locator("#gameView")).toBeVisible(); }
 async function place(page, cells) { for (const cell of cells) await page.locator(".duel-cell").nth(cell).click(); await expect(page.locator(".duel-stats")).toContainText("15 / 15"); await page.locator(".ready").click(); }
@@ -19,6 +19,18 @@ function coordinateSets(value, key = "", found = []) {
   return found;
 }
 function containsMineSet(value, mines) { return coordinateSets(value).some((cells) => { const unique = new Set(cells); return mines.every((cell) => unique.has(cell)); }); }
+async function captureServerFrames(page) {
+  await page.addInitScript(() => {
+    window.__TEST_WS_FRAMES__ = [];
+    const NativeWebSocket = window.WebSocket;
+    window.WebSocket = class extends NativeWebSocket {
+      constructor(...args) {
+        super(...args);
+        this.addEventListener("message", (event) => { try { window.__TEST_WS_FRAMES__.push(JSON.parse(event.data)); } catch {} });
+      }
+    };
+  });
+}
 
 test("two browsers play a deterministic match and rematch", async ({ browser }) => {
   const aContext = await browser.newContext({ serviceWorkers: "block" }); const bContext = await browser.newContext({ serviceWorkers: "block" }); const a = await aContext.newPage(); let b = await bContext.newPage();
@@ -38,7 +50,7 @@ test("two browsers play a deterministic match and rematch", async ({ browser }) 
 });
 
 test("sweeping browser never receives opponent placement coordinates", async ({ browser }) => {
-  const aContext = await browser.newContext({ serviceWorkers: "block" }); const bContext = await browser.newContext({ serviceWorkers: "block" }); const a = await aContext.newPage(); const b = await bContext.newPage(); const frames = []; b.on("websocket", (socket) => socket.on("framereceived", (frame) => { try { frames.push(JSON.parse(String(frame))); } catch {} }));
+  const aContext = await browser.newContext({ serviceWorkers: "block" }); const bContext = await browser.newContext({ serviceWorkers: "block" }); const a = await aContext.newPage(); const b = await bContext.newPage(); await captureServerFrames(b);
   const secret = Array.from({ length: 15 }, (_, i) => i);
   try {
     await create(a, "甲"); const code = (await a.locator("#roomLabel").textContent()).match(/\d{4}/)[0]; await join(b, code, "乙"); await place(a, secret); await place(b, Array.from({ length: 15 }, (_, i) => i + 20)); await expect(b.locator(".duel-phase")).toHaveText("扫雷阶段");
@@ -48,9 +60,10 @@ test("sweeping browser never receives opponent placement coordinates", async ({ 
         const attributes = [...cell.attributes].filter((attribute) => /^(data-|aria-)/.test(attribute.name)).map((attribute) => `${attribute.name}=${attribute.value}`);
         return cell.textContent.includes("💣") || cell.classList.contains("mine-preview") || attributes.some((attribute) => /mine|bomb/i.test(attribute)) ? [index] : [];
       });
-      return { local: parse(localStorage), session: parse(sessionStorage), exposedMineCells };
+      return { frames: window.__TEST_WS_FRAMES__, local: parse(localStorage), session: parse(sessionStorage), exposedMineCells };
     });
-    expect(frames.some((payload) => containsMineSet(payload, secret))).toBe(false);
+    expect(browserData.frames.length).toBeGreaterThan(0);
+    expect(browserData.frames.some((payload) => containsMineSet(payload, secret))).toBe(false);
     expect(containsMineSet(browserData.local, secret)).toBe(false);
     expect(containsMineSet(browserData.session, secret)).toBe(false);
     expect(browserData.exposedMineCells.some((cell) => secret.includes(cell))).toBe(false);
@@ -70,7 +83,7 @@ test("refresh reconnects the same seat without leaking the opponent board", asyn
 
 test("guest refresh reconnects with its own credential and restores the server snapshot", async ({ browser }) => {
   const aContext = await browser.newContext({ serviceWorkers: "block" }); const bContext = await browser.newContext({ serviceWorkers: "block" }); const a = await aContext.newPage(); const b = await bContext.newPage();
-  try { await create(a, "甲"); const code = (await a.locator("#roomLabel").textContent()).match(/\d{4}/)[0]; await join(b, code, "乙"); await place(a, Array.from({ length: 15 }, (_, i) => i)); await place(b, Array.from({ length: 15 }, (_, i) => i + 20)); await b.locator(".duel-cell").nth(19).click(); await expect(b.locator(".duel-cell").nth(19)).toHaveText(/^[0-8]$/); await b.reload(); await expect(b.locator("#gameView")).toBeVisible(); await expect(b.locator(".duel-cell").nth(19)).toHaveText(/^[0-8]$/);  } finally { await aContext.close(); await bContext.close(); }
+  try { await create(a, "甲"); const code = (await a.locator("#roomLabel").textContent()).match(/\d{4}/)[0]; await join(b, code, "乙"); await place(a, Array.from({ length: 15 }, (_, i) => i)); await place(b, Array.from({ length: 15 }, (_, i) => i + 20)); await expect(b.locator(".duel-phase")).toHaveText("扫雷阶段"); await b.locator(".duel-cell").nth(19).click(); await expect(b.locator(".duel-cell").nth(19)).toHaveText(/^[0-8]$/); await b.reload(); await expect(b.locator("#gameView")).toBeVisible(); await expect(b.locator(".duel-cell").nth(19)).toHaveText(/^[0-8]$/);  } finally { await aContext.close(); await bContext.close(); }
 });
 
 test("placement reconnect keeps the unready player editable and the ready player locked", async ({ browser }) => {

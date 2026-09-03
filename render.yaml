@@ -1,14 +1,16 @@
-# Render.com Blueprint — deploy tự động từ repo GitHub
-# Xem hướng dẫn ở DEPLOY.md
+# yaml-language-server: $schema=https://json.schemastore.org/render.yaml
 services:
   - type: web
-    name: two-player-games
+    name: shuangren-xiaoyouxi
     runtime: node
     plan: free
-    buildCommand: npm ci
+    numInstances: 1
+    buildCommand: npm ci --omit=dev --no-audit --no-fund
     startCommand: npm start
-    autoDeploy: true
     healthCheckPath: /health
+    autoDeployTrigger: checksPass
     envVars:
       - key: NODE_VERSION
-        value: 22.11.0
+        value: 22.23.2
+      - key: NODE_ENV
+        value: production

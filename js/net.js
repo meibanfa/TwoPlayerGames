@@ -4,6 +4,7 @@
 window.Net = (function () {
   let ws = null;
   const handlers = {};
+  const anyHandlers = [];
   let reconnectAllowed = false;
   let attempts = 0;
   let reconnTimer = null;
@@ -16,6 +17,7 @@ window.Net = (function () {
 
   function emit(type, payload) {
     (handlers[type] || []).forEach((fn) => fn(payload));
+    anyHandlers.forEach((fn) => fn(type, payload));
   }
 
   function bindSocket(socket, onOpen) {
@@ -52,7 +54,7 @@ window.Net = (function () {
       ws = new WebSocket(url());
       let settled = false;
       ws.onopen = () => { attempts = 0; settled = true; emit("netup"); resolve(); };
-      ws.onerror = () => { if (!settled) reject(new Error("Không kết nối được tới server.")); };
+      ws.onerror = () => { if (!settled) reject(new Error("无法连接服务器。")); };
       ws.onclose = () => { emit("netdown"); if (reconnectAllowed) scheduleReconnect(); };
       ws.onmessage = (ev) => {
         let msg; try { msg = JSON.parse(ev.data); } catch { return; }
@@ -70,10 +72,11 @@ window.Net = (function () {
   function isOpen() { return !!ws && ws.readyState === WebSocket.OPEN; }
 
   function on(type, fn) { (handlers[type] = handlers[type] || []).push(fn); }
+  function onAny(fn) { anyHandlers.push(fn); }
   function off(type) { delete handlers[type]; }
   function send(type, payload = {}) {
     if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type, ...payload }));
   }
 
-  return { connect, disconnect, isOpen, on, off, send, emit };
+  return { connect, disconnect, isOpen, on, onAny, off, send, emit };
 })();

@@ -1,25 +1,169 @@
 (function () {
-  const $ = (id) => document.getElementById(id), views = [$('homeView'), $('lobbyView'), $('gameView')];
-  let game, room = null;
-  try { room = JSON.parse(localStorage.getItem("minesweeper-duel-session") || "null"); } catch { room = null; }
-  function show(view) { views.forEach((v) => v.classList.toggle("hidden", v !== view)); }
+  const SESSION_KEY = "two-player-games-session";
+  const LEGACY_SESSION_KEY = "minesweeper-duel-session";
+  const $ = (id) => document.getElementById(id);
+  const views = [$('homeView'), $('lobbyView'), $('gameView')];
+  let game = null;
+  let room = null;
+  let selectedGameId = GameRegistry.all()[0]?.id || null;
+
+  try {
+    room = JSON.parse(localStorage.getItem(SESSION_KEY) || localStorage.getItem(LEGACY_SESSION_KEY) || "null");
+    if (room && !room.gameId) room.gameId = "minesweeper-duel";
+    if (room?.gameId) selectedGameId = room.gameId;
+    localStorage.removeItem(LEGACY_SESSION_KEY);
+  } catch {
+    room = null;
+  }
+
+  function show(view) { views.forEach((item) => item.classList.toggle("hidden", item !== view)); }
   function message(text) { $("lobbyMessage").textContent = text || ""; }
+  function config(gameId = selectedGameId) { return GameRegistry.get(gameId); }
+  function setLobbyReady(ready) { document.querySelectorAll("#createForm button, #joinForm button").forEach((button) => { button.disabled = !ready; }); }
   function connect() { return Net.connect().catch(() => { message("连接服务器失败，请稍后再试。"); throw new Error("connect failed"); }); }
   function sendAction(payload) { Net.send("gameAction", payload); }
-  function mount(seat, phase) { const cfg = GameRegistry.get("minesweeper-duel"); game?.destroy?.(); game = cfg.create({ boardEl: $("gameMount"), sendGameAction: sendAction, seat, phase }); }
-  function saveRoom(m) { room = { ...room, code: m.code, seat: m.seat, token: m.token || room?.token, playerNames: m.playerNames || room?.playerNames }; localStorage.setItem("minesweeper-duel-session", JSON.stringify(room)); }
-  function returnToLobby(reason) { room = null; localStorage.removeItem("minesweeper-duel-session"); game?.destroy?.(); game = null; $("restartBtn").classList.add("hidden"); $("opponentProgress").textContent = ""; show($("lobbyView")); message(reason); }
-  function showRoom(m, phase) { const name = (m.playerNames || room?.playerNames)?.[m.seat] || "玩家 1"; $("roomLabel").textContent = `房间码：${m.code}（${name}）`; show($("gameView")); mount(m.seat, phase); game.receive({ phase, placementDeadline: m.placementDeadline }); }
-  function restoreFinished(state) { if (state?.phase !== "FINISHED") return; game?.receive({ phase: "FINISHED", boards: state.boards, result: state.winner === null ? "平局" : state.winner === room?.seat ? "🏆 你赢了！" : "这局是对手赢了" }); $("restartBtn").classList.remove("hidden"); }
-  function handleStart(m) { saveRoom(m); showRoom(m, m.phase); }
-  $("startBtn").addEventListener("click", async () => { show($("lobbyView")); await connect(); });
+
+  function renderCards() {
+    const container = $("gameCards");
+    container.replaceChildren(...GameRegistry.all().map((entry) => {
+      const card = document.createElement("article");
+      card.className = "game-card";
+      card.innerHTML = `<div class="game-icon" aria-hidden="true">${entry.icon}</div><div><h2>${entry.name}</h2><p>${entry.description}</p></div><button class="btn primary" type="button">开始游戏</button>`;
+      card.querySelector("button").addEventListener("click", () => openLobby(entry.id));
+      return card;
+    }));
+  }
+
+  function updateGameText(gameId) {
+    const entry = config(gameId);
+    if (!entry) return false;
+    selectedGameId = entry.id;
+    $("lobbyGameTitle").textContent = entry.name;
+    $("lobbyGameDescription").textContent = entry.description;
+    $("activeGameTitle").textContent = entry.name;
+    $("rulesTitle").textContent = `${entry.name}怎么玩`;
+    $("rulesContent").replaceChildren(...entry.howTo.map((text) => { const paragraph = document.createElement("p"); paragraph.textContent = text; return paragraph; }));
+    return true;
+  }
+
+  async function openLobby(gameId) {
+    if (!updateGameText(gameId)) return;
+    show($("lobbyView"));
+    setLobbyReady(false);
+    message("正在连接服务器…");
+    try { await connect(); message(""); setLobbyReady(true); } catch { setLobbyReady(false); }
+  }
+
+  function mount(gameId, seat, phase, playerNames) {
+    const entry = config(gameId);
+    if (!entry) { returnToLobby("房间使用了当前版本不支持的游戏。"); return false; }
+    updateGameText(gameId);
+    game?.destroy?.();
+    game = entry.create({ boardEl: $("gameMount"), sendGameAction: sendAction, seat, phase, playerNames });
+    return true;
+  }
+
+  function saveRoom(messageValue) {
+    room = {
+      code: messageValue.code ?? room?.code,
+      seat: messageValue.seat ?? room?.seat,
+      token: messageValue.token || room?.token,
+      gameId: messageValue.gameId || room?.gameId,
+      playerNames: messageValue.playerNames || room?.playerNames,
+    };
+    localStorage.setItem(SESSION_KEY, JSON.stringify(room));
+  }
+
+  function clearRoom() {
+    room = null;
+    localStorage.removeItem(SESSION_KEY);
+    localStorage.removeItem(LEGACY_SESSION_KEY);
+  }
+
+  function returnToLobby(reason) {
+    const gameId = room?.gameId || selectedGameId;
+    clearRoom();
+    game?.destroy?.();
+    game = null;
+    $("restartBtn").classList.add("hidden");
+    updateGameText(gameId);
+    show($("lobbyView"));
+    message(reason);
+  }
+
+  function showRoom(messageValue, phase) {
+    const gameId = messageValue.gameId || room?.gameId;
+    const names = messageValue.playerNames || room?.playerNames;
+    const seat = messageValue.seat ?? room?.seat;
+    if (!mount(gameId, seat, phase, names)) return;
+    const name = names?.[seat] || "玩家";
+    $("roomLabel").textContent = `房间码：${messageValue.code || room?.code}（${name}）`;
+    show($("gameView"));
+    return true;
+  }
+
+  function handleStart(messageValue) {
+    saveRoom(messageValue);
+    showRoom(messageValue, messageValue.phase);
+    game?.receive({ type: "gameState", phase: messageValue.phase, placementDeadline: messageValue.placementDeadline });
+  }
+
+  renderCards();
+  updateGameText(selectedGameId);
   $("backHomeBtn").addEventListener("click", () => show($("homeView")));
-  $("createForm").addEventListener("submit", (e) => { e.preventDefault(); Net.send("create", { gameId: "minesweeper-duel", playerName: $("createName").value }); message("正在创建房间…"); });
-  $("joinForm").addEventListener("submit", (e) => { e.preventDefault(); Net.send("join", { code: $("roomCode").value, playerName: $("joinName").value }); message("正在加入房间…"); });
-  $("leaveBtn").addEventListener("click", () => { Net.send("leave"); Net.disconnect(); game?.destroy?.(); room = null; localStorage.removeItem("minesweeper-duel-session"); show($("homeView")); });
-  $("rulesBtn").addEventListener("click", () => $("rulesDialog").showModal()); $("closeRules").addEventListener("click", () => $("rulesDialog").close());
+  $("createForm").addEventListener("submit", (event) => {
+    event.preventDefault();
+    if (!Net.isOpen()) return message("服务器尚未连接，请稍后再试。");
+    Net.send("create", { gameId: selectedGameId, playerName: $("createName").value });
+    message("正在创建房间…");
+  });
+  $("joinForm").addEventListener("submit", (event) => {
+    event.preventDefault();
+    if (!Net.isOpen()) return message("服务器尚未连接，请稍后再试。");
+    Net.send("join", { code: $("roomCode").value, playerName: $("joinName").value });
+    message("正在加入房间…");
+  });
+  $("leaveBtn").addEventListener("click", () => {
+    Net.send("leave");
+    Net.disconnect();
+    game?.destroy?.();
+    game = null;
+    clearRoom();
+    show($("homeView"));
+  });
+  $("rulesBtn").addEventListener("click", () => $("rulesDialog").showModal());
+  $("closeRules").addEventListener("click", () => $("rulesDialog").close());
   $("restartBtn").addEventListener("click", () => Net.send("restart"));
-  Net.on("created", (m) => { saveRoom(m); showRoom(m, "WAITING"); }); Net.on("roomState", (m) => game?.receive(m)); Net.on("start", handleStart); Net.on("rejoined", (m) => { saveRoom(m); showRoom(m, m.state?.phase); game.receive({ ...m.state, revealedSnapshot: m.state?.revealed }); restoreFinished(m.state); }); Net.on("netup", () => { if (room?.code && room?.token) Net.send("rejoin", { code: room.code, seat: room.seat, token: room.token }); });
-  Net.on("gameState", (m) => game?.receive({ ...m, revealedSnapshot: m.revealed })); Net.on("placementState", (m) => game?.receive({ placement: m.placement, phase: "PLACING" })); Net.on("placementLocked", () => game?.receive({ phase: "PLACING", ready: true, message: "等待对手完成布雷…" })); Net.on("placementProgress", (m) => game?.receive({ phase: "PLACING", ready: m.ready[room?.seat] })); Net.on("revealResult", (m) => game?.receive({ revealedDelta: m.cells, mistakes: m.mistakes, penalty: m.penalty, phase: "SWEEPING" })); Net.on("progress", (m) => { $("opponentProgress").textContent = `你的进度：${m.mine} / ${m.total} 对手进度：${m.opponent} / ${m.total} 对手失误：${m.opponentMistakes}`; game?.receive({ progress: [m.mine, m.opponent] }); }); Net.on("gameFinished", (m) => { game?.receive({ phase: "FINISHED", boards: m.boards, summary: m.summary, result: m.winner === null ? "平局" : m.winner === room?.seat ? "🏆 你赢了！" : "这局是对手赢了" }); $("restartBtn").classList.remove("hidden"); }); Net.on("restart", (m) => { $("restartBtn").classList.add("hidden"); mount(room.seat, "PLACING"); game.receive({ phase: "PLACING", placementDeadline: m.placementDeadline }); }); Net.on("error", (m) => { if (/^(重连失败|对手未能及时重连|房间等待超时|对手已离开房间)/.test(String(m.message || ""))) returnToLobby(m.message); else message(m.message); }); Net.on("opponentDisconnected", () => game?.receive({ connectionMessage: "对手暂时断开，等待重新连接…" })); Net.on("opponentReconnected", () => game?.receive({ connectionMessage: "" })); Net.on("netretry", () => game?.receive({ connectionMessage: "正在重新连接…" }));
+
+  Net.on("created", (messageValue) => { saveRoom(messageValue); showRoom(messageValue, "WAITING"); });
+  Net.on("start", handleStart);
+  Net.on("rejoined", (messageValue) => {
+    saveRoom(messageValue);
+    if (!showRoom(messageValue, messageValue.state?.phase)) return;
+    game.receive({ type: "gameState", ...messageValue.state });
+    if (messageValue.state?.phase === "FINISHED") $("restartBtn").classList.remove("hidden");
+  });
+  Net.on("netup", () => {
+    setLobbyReady(true);
+    if (room?.code && room?.token) Net.send("rejoin", { code: room.code, seat: room.seat, token: room.token });
+  });
+  Net.on("netdown", () => setLobbyReady(false));
+  Net.on("gameFinished", () => $("restartBtn").classList.remove("hidden"));
+  Net.on("restart", (messageValue) => {
+    $("restartBtn").classList.add("hidden");
+    const gameId = messageValue.gameId || room?.gameId;
+    mount(gameId, room.seat, messageValue.phase, room.playerNames);
+  });
+  Net.on("error", (messageValue) => {
+    if (/^(重连失败|对手未能及时重连|房间等待超时|对手已离开房间)/.test(String(messageValue.message || ""))) returnToLobby(messageValue.message);
+    else if (game) game.receive?.({ type: "actionError", message: messageValue.message });
+    else message(messageValue.message);
+  });
+  Net.onAny((type, messageValue) => {
+    if (!game || ["created", "start", "rejoined", "error"].includes(type)) return;
+    if (messageValue?.gameId && room?.gameId && messageValue.gameId !== room.gameId) return;
+    game.receive?.({ type, ...messageValue });
+  });
+
   if (room?.code && room?.token) { show($("gameView")); connect().catch(() => show($("homeView"))); }
 })();

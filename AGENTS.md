@@ -33,7 +33,7 @@ Pull requests should explain the milestone, link related issues, list commands r
 
 ## Security & Configuration
 
-Never commit `.env`, `data/`, or Playwright artifacts. Hidden-information games must be server-authoritative: never send opponent mine coordinates in state, reconnect payloads, or progress messages. Preserve the extensible registry, room/reconnect infrastructure, and responsive UI.
+Never commit `.env`, `data/`, or Playwright artifacts. Hidden-information games must be server-authoritative: never send unauthorized mine coordinates in state, reconnect payloads, progress messages, or terminal state. A game may intentionally forget even the local player's placement after confirmation. Preserve the extensible registry, room/reconnect infrastructure, and responsive UI.
 
 ## Mandatory Review Gate
 

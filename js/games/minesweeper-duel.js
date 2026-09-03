@@ -9,7 +9,7 @@
     ctx.boardEl.appendChild(root);
     const phaseEl = root.querySelector(".duel-phase"), subtitleEl = root.querySelector(".duel-subtitle"), statsEl = root.querySelector(".duel-stats"), boardEl = root.querySelector(".duel-board"), actions = root.querySelector(".duel-actions"), readyBtn = root.querySelector(".ready"), flagBtn = root.querySelector(".flag-mode"), finalEl = root.querySelector(".final-boards"), messageEl = root.querySelector(".duel-message");
     const cells = [];
-    let phase = "PLACING", placement = new Set(), revealed = new Map(), flags = new Set(), finalBoards = null, mistakes = 0, penalty = 0, progress = null, flagMode = false, placementDeadline = null, sweepStartedAt = null, summary = null, ready = false, message = "", result = "", connectionMessage = "";
+    let phase = ctx.phase || "PLACING", placement = new Set(), revealed = new Map(), flags = new Set(), finalBoards = null, mistakes = 0, penalty = 0, progress = null, flagMode = false, placementDeadline = null, sweepStartedAt = null, summary = null, ready = false, message = "", result = "", connectionMessage = "";
     for (let i = 0; i < L.BOARD_ROWS * L.BOARD_COLS; i++) {
       const cell = document.createElement("button"); cell.type = "button"; cell.className = "duel-cell"; cell.setAttribute("role", "gridcell");
       cell.addEventListener("click", () => { if (!(phase === "PLACING" && ready)) ctx.sendGameAction({ action: phase === "PLACING" ? "place" : (flagMode ? "flag" : "reveal"), cell: i }); });
@@ -35,6 +35,17 @@
       messageEl.textContent = connectionMessage || resultSummary;
     }
     function receive(msg) {
+      if (msg.type === "placementState") msg = { ...msg, phase: "PLACING" };
+      if (msg.type === "placementLocked") msg = { ...msg, phase: "PLACING", ready: true, message: "等待对手完成布雷…" };
+      if (msg.type === "placementProgress") msg = { ...msg, phase: "PLACING", ready: msg.ready?.[ctx.seat] };
+      if (msg.type === "revealResult") msg = { ...msg, phase: "SWEEPING", revealedDelta: msg.cells };
+      if (msg.type === "progress") msg = { ...msg, progress: [msg.mine, msg.opponent] };
+      if (msg.type === "gameState" && msg.revealed) msg = { ...msg, revealedSnapshot: msg.revealed };
+      if (msg.type === "gameFinished") msg = { ...msg, phase: "FINISHED", result: msg.winner === null ? "平局" : msg.winner === ctx.seat ? "🏆 你赢了！" : "这局是对手赢了" };
+      if (msg.type === "restart") msg = { ...msg, phase: "PLACING" };
+      if (msg.type === "opponentDisconnected") msg = { ...msg, connectionMessage: "对手暂时断开，等待重新连接…" };
+      if (msg.type === "opponentReconnected") msg = { ...msg, connectionMessage: "" };
+      if (msg.type === "netretry") msg = { ...msg, connectionMessage: "正在重新连接…" };
       const previousPhase = phase;
       if (msg.phase) phase = msg.phase;
       if (msg.placement) placement = new Set(msg.placement);
@@ -60,5 +71,5 @@
     return { receive, destroy() { clearInterval(tick); root.remove(); }, getPlacement() { return copy([...placement]); } };
   }
   function formatTime(ms) { if (ms === null || ms === undefined) return "未完成"; const seconds = Math.floor(ms / 1000); return `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`; }
-  window.GameRegistry.register({ id: "minesweeper-duel", name: "互坑扫雷", description: "你埋雷，我来扫。双人实时心理博弈。", howTo: ["轮流为对手埋下 15 颗雷，再同时扫雷。", "数字表示周围八格的地雷数量；踩雷会增加 10 秒罚时。"], create });
+  window.GameRegistry.register({ id: "minesweeper-duel", name: "互坑扫雷", icon: "💣", description: "你埋雷，我来扫。双人实时心理博弈。", howTo: ["第一阶段，你需要在棋盘中埋下 15 颗雷，这张地图会交给你的对手。双方布雷完成后交换地图，同时开始扫雷。", "数字表示周围 8 个格子中的地雷数量。这里没有第一步保护；踩雷不会立刻出局，但会增加 10 秒罚时。", "清空所有安全格会记录完成时间。有效用时等于实际扫雷用时加罚时，有效用时更低者获胜。"], create });
 })();

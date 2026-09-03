@@ -1,24 +1,11 @@
-# Chính sách bảo mật / Security Policy
+# 安全策略
 
-## Phạm vi / Scope
+## 支持范围
 
-Đây là bộ trò chơi 2 người chạy phía client (HTML/CSS/JS) kèm một server Node
-tùy chọn làm WebSocket relay cho chế độ online. Server **không có xác thực** —
-ai có mã phòng đều vào được — nên chỉ nên chạy cục bộ hoặc trong mạng tin cậy.
+仅支持 `main` 最新版本。平台没有账户系统；持有四位房间码的人可以尝试加入尚未满员的房间，因此房间码只应分享给邀请的好友。
 
-This is a client-side (HTML/CSS/JS) two-player game suite with an optional Node
-WebSocket relay server for online play. The server has **no authentication** —
-anyone with a room code can join — so only run it locally or on a trusted network.
+服务端是隐藏信息、阶段、计时、分数和胜负的唯一权威。安全问题包括但不限于：未授权雷坐标泄漏、重连 token 绕过、跨席位控制、伪造游戏结果、绕过来源/消息大小限制和房间资源无法清理。
 
-## Báo lỗi bảo mật / Reporting a vulnerability
+## 报告漏洞
 
-Nếu phát hiện lỗ hổng, vui lòng mở một issue riêng tư (GitHub Security Advisory)
-hoặc liên hệ chủ repo. Đừng công khai chi tiết khai thác trước khi có bản vá.
-
-If you find a vulnerability, please open a private report (GitHub Security
-Advisory) or contact the repository owner. Do not publicly disclose exploit
-details before a fix is available.
-
-## Phiên bản được hỗ trợ / Supported versions
-
-Chỉ nhánh `main` mới nhất được hỗ trợ. Only the latest `main` branch is supported.
+请通过 GitHub Security Advisory 私密报告，并提供复现步骤、受影响版本和可观察证据。修复发布前不要公开利用细节，也不要在普通 issue 中粘贴有效的重连 token 或其他敏感会话信息。

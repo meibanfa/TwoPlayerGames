@@ -1,16 +1,9 @@
 import js from "@eslint/js";
 import globals from "globals";
 
-// Các module phía trình duyệt tự gắn vào window và gọi chéo nhau qua tên toàn cục.
 const browserGlobals = {
   GameRegistry: "writable",
-  makeRng: "readonly",
-  Sound: "readonly",
   Net: "readonly",
-  I18n: "readonly",
-  StatsUtil: "readonly",
-  ReplayStore: "readonly",
-  GAMES_EN: "readonly",
 };
 
 export default [
@@ -19,14 +12,12 @@ export default [
   },
   js.configs.recommended,
   {
-    // Code chạy trên trình duyệt
     files: ["js/**/*.js"],
     languageOptions: {
       ecmaVersion: 2022,
       sourceType: "script",
       globals: {
         ...globals.browser,
-        // Một số file hỗ trợ dual-export để unit test require được.
         module: "readonly",
         ...browserGlobals,
       },
@@ -37,7 +28,6 @@ export default [
     },
   },
   {
-    // Service worker
     files: ["sw.js"],
     languageOptions: {
       ecmaVersion: 2022,
@@ -53,8 +43,7 @@ export default [
     },
   },
   {
-    // Code chạy trên Node: server, accounts store, scripts, tests
-    files: ["server.js", "accounts.js", "playwright.config.js", "scripts/**/*.js", "scripts/**/*.mjs", "tests/**/*.js"],
+    files: ["server.js", "server/**/*.js", "playwright.config.js", "scripts/**/*.js", "scripts/**/*.mjs", "tests/**/*.js"],
     languageOptions: {
       ecmaVersion: 2022,
       sourceType: "module",
