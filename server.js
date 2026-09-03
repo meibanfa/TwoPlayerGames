@@ -20,6 +20,7 @@ const CREATE_LIMIT = Number(process.env.CREATE_LIMIT) || 12;
 const CREATE_WINDOW_MS = Number(process.env.CREATE_WINDOW_MS) || 60_000;
 const WAITING_ROOM_TTL_MS = Number(process.env.WAITING_ROOM_TTL_MS) || 5 * 60_000;
 const FINISH_WINDOW_MS = Number(process.env.FINISH_WINDOW_MS) || 5_000;
+const WS_HEARTBEAT_MS = Number(process.env.WS_HEARTBEAT_MS) || 30_000;
 const rooms = new Map();
 const ipCreates = new Map();
 const MIME = { ".html": "text/html; charset=utf-8", ".css": "text/css; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".json": "application/json; charset=utf-8", ".svg": "image/svg+xml", ".png": "image/png" };
@@ -70,7 +71,10 @@ const server = http.createServer((req, res) => { let requested; try { requested 
 const wss = new WebSocketServer({ server, maxPayload: MAX_MESSAGE_BYTES });
 server.on("error", (error) => console.error(`[server] http error: ${error.stack || error.message}`));
 wss.on("error", (error) => console.error(`[server] websocket error: ${error.stack || error.message}`));
-wss.on("connection", (ws, req) => { const origin = req.headers.origin; if (origin && origin !== `http://${req.headers.host}` && origin !== `https://${req.headers.host}`) return ws.close(1008, "origin"); ws.clientIp = req.socket.remoteAddress || "unknown"; ws.on("message", (raw) => { let msg; try { msg = JSON.parse(raw); } catch { return sendError(ws, "消息格式无效。"); }
+const heartbeat = setInterval(() => { wss.clients.forEach((client) => { if (client.isAlive === false) return client.terminate(); client.isAlive = false; client.ping(); }); }, WS_HEARTBEAT_MS);
+heartbeat.unref();
+wss.on("close", () => clearInterval(heartbeat));
+wss.on("connection", (ws, req) => { const origin = req.headers.origin; if (origin && origin !== `http://${req.headers.host}` && origin !== `https://${req.headers.host}`) return ws.close(1008, "origin"); ws.isAlive = true; ws.on("pong", () => { ws.isAlive = true; }); ws.clientIp = req.socket.remoteAddress || "unknown"; ws.on("message", (raw) => { let msg; try { msg = JSON.parse(raw); } catch { return sendError(ws, "消息格式无效。"); }
   if (msg === null || typeof msg !== "object" || Array.isArray(msg)) return sendError(ws, "消息格式无效。");
   if (msg.type === "create") { if (msg.gameId !== "minesweeper-duel") return sendError(ws, "当前只开放互坑扫雷。"); if (!allowCreate(ws)) return sendError(ws, "创建房间过于频繁，请稍后再试。"); removeMembership(ws); if (rooms.size >= MAX_ROOMS) return sendError(ws, "房间数量已达上限，请稍后再试。"); const code = makeCode(); if (!code) return sendError(ws, "暂时无法创建房间，请稍后再试。"); const room = { code, players: [ws, null], names: [cleanName(msg.playerName, "玩家 1"), null], tokens: [makeToken(), null], dcTimers: [null, null], state: newState() }; rooms.set(room.code, room); room.waitingTimer = setTimeout(() => { if (rooms.get(room.code) === room && !room.players[1]) { send(room.players[0], "error", { message: "房间等待超时，请重新创建。" }); removeMembership(room.players[0]); } }, WAITING_ROOM_TTL_MS); room.waitingTimer.unref?.(); ws.roomCode = room.code; ws.seat = 0; send(ws, "created", { code: room.code, token: room.tokens[0], gameId: "minesweeper-duel", seat: 0, playerNames: room.names }); send(ws, "roomState", { phase: "WAITING" }); return; }
   if (msg.type === "join") { const room = rooms.get(String(msg.code || "")); if (!room || room.players[1] || room.tokens[1] || !room.players[0] || room.players[0] === ws) return sendError(ws, "房间不存在、已满或房主正在重连。"); removeMembership(ws); clearTimeout(room.waitingTimer); room.players[1] = ws; room.names[1] = cleanName(msg.playerName, "玩家 2"); room.tokens[1] = makeToken(); ws.roomCode = room.code; ws.seat = 1; room.state.phase = "PLACING"; room.state.placementDeadline = Date.now() + PLACEMENT_MS; room.players.forEach((p, seat) => send(p, "start", { code: room.code, gameId: "minesweeper-duel", seat, playerNames: room.names, phase: "PLACING", token: room.tokens[seat], placementDeadline: room.state.placementDeadline })); room.placementTimer = setTimeout(() => autoPlacement(room), PLACEMENT_MS); return; }
@@ -94,6 +98,7 @@ if (require.main === module) {
       clearTimeout(room.finishTimer);
       room.dcTimers.forEach(clearTimeout);
     });
+    clearInterval(heartbeat);
     wss.clients.forEach((client) => client.close(1012, "server restart"));
     server.close((error) => {
       clearTimeout(deadline);
