@@ -69,7 +69,8 @@ function allowCreate(ws) { const now = Date.now(); ws.createTimes = (ws.createTi
 const PUBLIC_FILES = new Set(["index.html", "styles.css", "js/main.js", "js/net.js", "js/registry.js", "js/games/minesweeper-duel.js", "js/games/minesweeper-duel-logic.js"]);
 const server = http.createServer((req, res) => { let requested; try { requested = decodeURIComponent((req.url || "/").split("?")[0]); } catch { res.writeHead(400); return res.end("Bad Request"); } if (requested === "/health") { res.writeHead(200, { "Content-Type": MIME[".json"], "Cache-Control": "no-store" }); return res.end(JSON.stringify({ ok: true, uptimeSeconds: Math.floor(process.uptime()), rooms: rooms.size })); } const relative = requested === "/" ? "index.html" : requested.replace(/^\/+/, ""); if (!PUBLIC_FILES.has(relative)) { res.writeHead(404); return res.end("Not Found"); } const file = path.resolve(ROOT, relative); fs.readFile(file, (err, data) => { if (err) { res.writeHead(404); return res.end("Not Found"); } res.writeHead(200, { "Content-Type": MIME[path.extname(file)] || "application/octet-stream", "X-Content-Type-Options": "nosniff", "Cache-Control": "no-cache" }); res.end(data); }); });
 const wss = new WebSocketServer({ server, maxPayload: MAX_MESSAGE_BYTES });
-server.on("error", (error) => console.error(`[server] http error: ${error.stack || error.message}`));
+let startupComplete = false;
+server.on("error", (error) => { console.error(`[server] http error: ${error.stack || error.message}`); if (require.main === module && !startupComplete) process.exitCode = 1; });
 wss.on("error", (error) => console.error(`[server] websocket error: ${error.stack || error.message}`));
 const heartbeat = setInterval(() => { wss.clients.forEach((client) => { if (client.isAlive === false) return client.terminate(); client.isAlive = false; client.ping(); }); }, WS_HEARTBEAT_MS);
 heartbeat.unref();
@@ -109,6 +110,6 @@ if (require.main === module) {
   };
   process.once("SIGTERM", () => shutdown("SIGTERM"));
   process.once("SIGINT", () => shutdown("SIGINT"));
-  server.listen(PORT, HOST, () => console.log(`[server] 双人小游戏 listening on ${HOST}:${PORT} (${process.env.NODE_ENV || "development"})`));
+  server.listen(PORT, HOST, () => { startupComplete = true; console.log(`[server] 双人小游戏 listening on ${HOST}:${PORT} (${process.env.NODE_ENV || "development"})`); });
 }
 module.exports = { server, rooms, Logic, finish };
