@@ -1,5 +1,7 @@
 "use strict";
 
+(function () {
+
 const BOARD_ROWS = 11;
 const BOARD_COLS = 11;
 const CELL_COUNT = BOARD_ROWS * BOARD_COLS;
@@ -113,3 +115,4 @@ const api = {
 };
 if (typeof module !== "undefined") module.exports = api;
 if (typeof window !== "undefined") window.ForgottenMinesLogic = api;
+})();
