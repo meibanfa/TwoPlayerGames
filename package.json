@@ -11,7 +11,7 @@
     "test:unit": "node --test tests/minesweeper-duel.test.js tests/forgotten-mines.test.js tests/review-harness.test.mjs",
     "test:online": "node tests/minesweeper-duel-it.js && node tests/forgotten-mines-it.js",
     "test:selfplay": "node tests/minesweeper-duel-it.js",
-    "test:e2e": "playwright test",
+    "test:e2e": "node scripts/run-e2e.js",
     "test": "node scripts/smoke-test.js && npm run test:unit && npm run test:online",
     "verify": "npm run lint && npm test && npm run test:e2e",
     "review": "node scripts/gpt-review.mjs",

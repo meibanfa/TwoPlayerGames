@@ -127,6 +127,7 @@
       }
     }
     function receive(message) {
+      if (message.type === "actionError") latestEvent = { kind: "error", text: message.message || "操作失败，请重试。" };
       if (message.type === "opponentDisconnected") connectionMessage = "对手暂时断开，等待重新连接…";
       if (message.type === "opponentReconnected") connectionMessage = "";
       if (message.type === "netretry") connectionMessage = "正在重新连接…";

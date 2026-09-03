@@ -211,6 +211,19 @@ async function leaveAll(...sockets) {
     gameHandlers.get("forgotten-mines").handlePlacementTimeout(bothFailRoom, bothFailRoom.state);
     assert.equal((await noWinner).winner, null);
 
+    const bothReady = await createAndJoin(url, "forgotten-mines", ["自动甲", "自动乙"]); live.push(bothReady.a, bothReady.b);
+    const bothReadyRoom = rooms.get(bothReady.created.code);
+    bothReadyRoom.state.placements = [new Set(sharedPlacement), new Set(sharedPlacement)];
+    const autoStarted = next(bothReady.a, "gameState", (message) => message.phase === "PLAYING");
+    gameHandlers.get("forgotten-mines").handlePlacementTimeout(bothReadyRoom, bothReadyRoom.state);
+    await autoStarted;
+    assert.deepEqual(bothReadyRoom.state.confirmed, [true, true]);
+    const staleState = bothReadyRoom.state;
+    gameHandlers.get("forgotten-mines").restart(bothReadyRoom);
+    gameHandlers.get("forgotten-mines").handlePlacementTimeout(bothReadyRoom, staleState);
+    assert.equal(bothReadyRoom.state.phase, "PLACING", "stale timer mutated a restarted match");
+    assert.deepEqual(bothReadyRoom.state.confirmed, [false, false]);
+
     const expiring = await createAndJoin(url, "forgotten-mines", ["留守者", "离线者"]); live.push(expiring.a, expiring.b);
     const expiredCode = expiring.created.code;
     const disconnected = next(expiring.a, "opponentDisconnected");
@@ -224,7 +237,7 @@ async function leaveAll(...sockets) {
 
     const postConfirmFrames = forgottenFrames.flat().filter((message) => ["PLAYING", "REENTRY", "FINISHED"].includes(message.phase) || message.type === "gameFinished");
     postConfirmFrames.forEach(assertNoPlacement);
-    await leaveAll(unsupported, minesRoom.a, minesRoom.b, match.a, match.b, timeoutMatch.a, timeoutMatch.b, bothFail.a, bothFail.b, expiring.a);
+    await leaveAll(unsupported, minesRoom.a, minesRoom.b, match.a, match.b, timeoutMatch.a, timeoutMatch.b, bothFail.a, bothFail.b, bothReady.a, bothReady.b, expiring.a);
     console.log("ok online: multi-game forgotten-mines authority, secrecy, timeout, reconnect, and restart");
   } finally {
     await Promise.allSettled(live.map(close));

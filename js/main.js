@@ -99,6 +99,7 @@
     const name = names?.[seat] || "玩家";
     $("roomLabel").textContent = `房间码：${messageValue.code || room?.code}（${name}）`;
     show($("gameView"));
+    return true;
   }
 
   function handleStart(messageValue) {
@@ -155,6 +156,7 @@
   });
   Net.on("error", (messageValue) => {
     if (/^(重连失败|对手未能及时重连|房间等待超时|对手已离开房间)/.test(String(messageValue.message || ""))) returnToLobby(messageValue.message);
+    else if (game) game.receive?.({ type: "actionError", message: messageValue.message });
     else message(messageValue.message);
   });
   Net.onAny((type, messageValue) => {
