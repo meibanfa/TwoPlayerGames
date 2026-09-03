@@ -1,6 +1,7 @@
 "use strict";
 const path = require("path");
 const { defineConfig, devices } = require("@playwright/test");
+const externalBaseURL = process.env.PLAYWRIGHT_BASE_URL;
 
 module.exports = defineConfig({
   testDir: "./tests/e2e",
@@ -10,12 +11,12 @@ module.exports = defineConfig({
   retries: process.env.CI ? 1 : 0,
   reporter: process.env.CI ? [["github"], ["html", { open: "never" }]] : "list",
   use: {
-    baseURL: "http://127.0.0.1:8777",
+    baseURL: externalBaseURL || "http://127.0.0.1:8777",
     trace: "retain-on-failure",
     serviceWorkers: "block",
     ...devices["Desktop Chrome"],
   },
-  webServer: {
+  webServer: externalBaseURL ? undefined : {
     command: "node server.js",
     url: "http://127.0.0.1:8777",
     reuseExistingServer: false,
