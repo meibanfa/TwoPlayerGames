@@ -18,7 +18,7 @@ module.exports = defineConfig({
   webServer: {
     command: "node server.js",
     url: "http://127.0.0.1:8777",
-    reuseExistingServer: !process.env.CI,
+    reuseExistingServer: false,
     timeout: 30_000,
     env: {
       ...process.env,

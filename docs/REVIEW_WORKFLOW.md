@@ -12,6 +12,10 @@ npm run review:fix
 npm run review
 ```
 
+This sequence is mandatory after every meaningful implementation milestone: finish the code, run verification, then run `npm run review` automatically before reporting completion. Never treat an unavailable or failed reviewer as approval.
+
+For major milestones, after the deterministic and independent-review gates pass, create a focused commit and push it to the configured GitHub remote when GitHub submission has been authorized. Do not push an incomplete or blocked milestone.
+
 Or run the bounded autonomous sequence:
 
 ```bash

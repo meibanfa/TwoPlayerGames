@@ -30,3 +30,9 @@ History uses concise conventional prefixes: `feat:`, `fix:`, `test:`, `docs:`, `
 ## Security & Configuration
 
 Never commit `.env`, `data/`, or Playwright artifacts. Hidden-information games must be server-authoritative: never send opponent mine coordinates in state, reconnect payloads, or progress messages. Preserve the extensible registry, room/reconnect infrastructure, and responsive UI.
+
+Do not create commits, push, or rewrite history unless the user explicitly requests it. For a major milestone, once verification and the independent review gate pass, commit the focused milestone and push it to the configured GitHub remote when the user has authorized GitHub submission.
+
+## Mandatory Review Gate
+
+After every meaningful code change, run deterministic verification and then launch a fresh independent review with `npm run review`. Inspect `.review/latest.md`; a reviewer failure or `BLOCK` result must be reported and resolved or explicitly surfaced before claiming the work is complete. Use `npm run review:cycle` when fixes and a bounded re-review are appropriate.
