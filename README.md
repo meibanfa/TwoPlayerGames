@@ -4,6 +4,16 @@
 
 当前唯一游戏是 **互坑扫雷**：两位玩家分别为对手埋下 15 颗雷，交换地图后同时扫雷。没有第一步保护；踩雷不会出局，但会增加 10 秒罚时。完成后服务器会保留短暂结算窗口，并按有效用时（扫雷用时加罚时）判定胜负。
 
+## 和朋友在线玩
+
+1. 两人打开同一个公开 HTTPS 地址。
+2. 一人点击“开始游戏”，输入昵称并创建房间。
+3. 把四位房间码发给朋友；另一人输入昵称和房间码加入。
+4. 双方各自布雷并确认，然后同时扫雷。短暂断线或刷新会在 45 秒内自动重连。
+5. 结算后双方点击“再来一局”即可在原房间开始全新对局。
+
+公开实例使用单个 Node.js 进程，因为房间和隐藏棋盘只保存在内存中。重新部署、进程重启或免费实例休眠会结束现有房间；当前版本不使用数据库、Redis 或多实例扩缩容。
+
 ## 本地运行
 
 要求 Node.js 20+。
@@ -14,11 +24,23 @@ npm start
 # 打开 http://localhost:8777
 ```
 
-`npm test` 运行 smoke、纯逻辑和 WebSocket 权威状态测试；`npm run lint` 运行 ESLint；`npm run test:e2e` 运行 Playwright（需要 `npx playwright install chromium`）；`npm run verify` 依次运行 lint、Node 测试和浏览器测试。
+`npm test` 运行 smoke、纯逻辑和 WebSocket 权威状态测试；`npm run lint` 运行 ESLint；`npm run test:e2e` 运行 Playwright（首次需要 `npx playwright install --with-deps chromium`）；`npm run verify` 依次运行 lint、Node 测试和浏览器测试。
+
+## CI 与生产部署
+
+GitHub Actions 对 `main` 的 push 和 pull request 分别执行 lint、Node 单元/集成测试和真实 Chromium E2E。生产部署使用根目录的 `render.yaml`：固定一个 Render Web Service 实例，通过 `$PORT` 在 `0.0.0.0` 监听，并由 Render 提供 HTTPS/WSS。
+
+服务健康检查：
+
+```bash
+curl -fsS https://<service>.onrender.com/health
+```
+
+可选运行参数包括 `HOST`、`RECONNECT_GRACE_MS`、`PLACEMENT_MS`、`FINISH_WINDOW_MS`、`WAITING_ROOM_TTL_MS`、`MAX_ROOMS` 和 `WS_HEARTBEAT_MS`。生产环境通常只需让平台设置 `PORT` 和 `NODE_ENV=production`。创建服务和限制说明见 [DEPLOY.md](DEPLOY.md)。
 
 ## 架构
 
-浏览器使用原生 HTML/CSS/JavaScript。`js/registry.js` 保留可扩展的游戏注册表，游戏模块位于 `js/games/`。`server.js` 提供静态文件、房间码、重连、重新开始和 `gameAction` 协议。
+浏览器使用原生 HTML/CSS/JavaScript。`js/registry.js` 保留可扩展的游戏注册表，游戏模块位于 `js/games/`。`server.js` 提供静态文件、`/health`、房间码、重连、重新开始和 `gameAction` 协议。
 
 互坑扫雷不使用旧游戏的确定性 move relay：服务器保存双方布雷、揭示、旗子、罚时和阶段时间。客户端只提交布雷/插旗/翻格意图，服务器只返回该玩家获知的数字、已揭示格和进度，因此对手雷坐标不会出现在 WebSocket payload 或重连状态中，直到比赛结束。断线后房间保留 45 秒，计时继续；刷新会使用会话 token 重连，不会重置罚时或服务器时间戳。
 

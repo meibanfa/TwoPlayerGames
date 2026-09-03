@@ -1,7 +1,7 @@
 {
   "name": "two-player-games",
   "version": "1.1.0",
-  "description": "Bộ trò chơi 2 người: chơi chung máy hoặc online qua mạng",
+  "description": "双人实时在线小游戏平台",
   "type": "commonjs",
   "main": "server.js",
   "scripts": {
