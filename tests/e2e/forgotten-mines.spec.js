@@ -149,3 +149,30 @@ test("two browsers complete forgotten mines without exposing hidden layouts", as
     await bContext.close();
   }
 });
+
+test("terminal results distinguish a treasure draw from no-winner timeout and reconnect", async ({ page }) => {
+  await page.goto("/");
+  const results = await page.evaluate(() => {
+    const render = (state) => {
+      const boardEl = document.createElement("div");
+      document.body.appendChild(boardEl);
+      const game = window.GameRegistry.get("forgotten-mines").create({ boardEl, sendGameAction() {}, seat: 0, phase: "FINISHED", playerNames: ["甲", "乙"] });
+      game.receive({ type: "gameState", ...state });
+      const text = boardEl.querySelector(".forgotten-result").textContent;
+      game.destroy();
+      return text;
+    };
+    const common = { phase: "FINISHED", winner: null, scores: [25, 25], positions: [0, 120] };
+    return {
+      draw: render({ ...common, finishOutcome: "DRAW", finishReason: "三个宝物均已找到" }),
+      timeout: render({ ...common, scores: [0, 0], finishOutcome: "NO_WINNER", finishReason: "双方未在规定时间内完成布雷" }),
+      rejoinedTimeout: render({ ...common, scores: [0, 0], finishOutcome: "NO_WINNER", finishReason: "双方未在规定时间内完成布雷" }),
+    };
+  });
+  expect(results.draw).toContain("平局");
+  expect(results.draw).toContain("最终比分 25 : 25");
+  expect(results.draw).toContain("三个宝物均已找到");
+  expect(results.timeout).toContain("无胜者");
+  expect(results.timeout).not.toContain("平局");
+  expect(results.rejoinedTimeout).toContain("无胜者");
+});

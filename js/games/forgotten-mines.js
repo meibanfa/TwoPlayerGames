@@ -33,6 +33,7 @@
     let detonatedCells = new Set();
     let latestEvent = null;
     let winner = null;
+    let finishOutcome = null;
     let finishReason = null;
     let connectionMessage = "";
 
@@ -122,7 +123,10 @@
       connectionEl.textContent = connectionMessage;
       resultEl.classList.toggle("hidden", phase !== "FINISHED");
       if (phase === "FINISHED") {
-        const result = winner === null ? "平局" : winner === ctx.seat ? "🏆 你赢了！" : "这局是对手赢了";
+        let result = "比赛结束";
+        if (finishOutcome === L.FINISH_OUTCOMES.NO_WINNER) result = "无胜者";
+        else if (finishOutcome === L.FINISH_OUTCOMES.DRAW) result = "平局";
+        else if (finishOutcome === L.FINISH_OUTCOMES.WINNER) result = winner === ctx.seat ? "🏆 你赢了！" : "这局是对手赢了";
         resultEl.textContent = `${result} · 最终比分 ${scores[0]} : ${scores[1]} · ${finishReason || ""}`;
       }
     }
@@ -144,6 +148,7 @@
         detonatedCells = new Set();
         latestEvent = null;
         winner = null;
+        finishOutcome = null;
         finishReason = null;
         placementDeadline = message.placementDeadline;
       }
@@ -162,6 +167,7 @@
         if (message.detonatedCells) detonatedCells = new Set(message.detonatedCells);
         if (message.latestEvent !== undefined) latestEvent = message.latestEvent;
         if (message.winner !== undefined) winner = message.winner;
+        if (message.finishOutcome !== undefined) finishOutcome = message.finishOutcome;
         if (message.finishReason !== undefined) finishReason = message.finishReason;
       }
       render();

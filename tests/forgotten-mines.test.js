@@ -97,6 +97,7 @@ test("treasures award 10, 15, 20 without adjacent points and third ends immediat
 });
 
 test("equal final scores draw and higher score wins", () => {
+  assert.deepEqual(L.FINISH_OUTCOMES, { WINNER: "WINNER", DRAW: "DRAW", NO_WINNER: "NO_WINNER" });
   assert.equal(L.winnerForScores([12, 12]), null);
   assert.equal(L.winnerForScores([-5, -2]), 1);
 });

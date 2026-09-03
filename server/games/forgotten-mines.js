@@ -22,6 +22,7 @@ function createForgottenMines(deps) {
       collectedTreasures: [],
       latestEvent: null,
       winner: null,
+      finishOutcome: null,
       finishReason: null,
     };
   }
@@ -43,6 +44,7 @@ function createForgottenMines(deps) {
       detonatedCells: [...state.detonatedCells],
       latestEvent: state.latestEvent ? { ...state.latestEvent } : null,
       winner: state.winner,
+      finishOutcome: state.finishOutcome,
       finishReason: state.finishReason,
     };
     if (state.phase === "PLACING" && !state.confirmed[seat]) output.placement = [...state.placements[seat]];
@@ -52,7 +54,7 @@ function createForgottenMines(deps) {
   function emitState(room, seat) { send(room.players[seat], "gameState", publicState(room, seat)); }
   function emitAll(room) { room.players.forEach((_, seat) => emitState(room, seat)); }
 
-  function finish(room, winner, reason) {
+  function finish(room, winner, outcome, reason) {
     const state = room.state;
     if (state.phase === "FINISHED") return;
     clearTimeout(room.placementTimer);
@@ -62,8 +64,9 @@ function createForgottenMines(deps) {
     state.currentTurn = null;
     state.pendingReentrySeat = null;
     state.winner = winner;
+    state.finishOutcome = outcome;
     state.finishReason = reason;
-    broadcast(room, "gameFinished", { gameId: room.gameId, winner, scores: [...state.scores], finishReason: reason });
+    broadcast(room, "gameFinished", { gameId: room.gameId, winner, finishOutcome: outcome, scores: [...state.scores], finishReason: reason });
     emitAll(room);
   }
 
@@ -86,8 +89,8 @@ function createForgottenMines(deps) {
     });
     const failed = [0, 1].filter((seat) => !scheduledState.confirmed[seat]);
     if (failed.length === 0) return beginPlay(room);
-    if (failed.length === 2) return finish(room, null, "双方未在规定时间内完成布雷");
-    finish(room, 1 - failed[0], `${room.names[failed[0]]} 未在规定时间内完成布雷`);
+    if (failed.length === 2) return finish(room, null, Logic.FINISH_OUTCOMES.NO_WINNER, "双方未在规定时间内完成布雷");
+    finish(room, 1 - failed[0], Logic.FINISH_OUTCOMES.WINNER, `${room.names[failed[0]]} 未在规定时间内完成布雷`);
   }
 
   function schedulePlacement(room) {
@@ -125,7 +128,9 @@ function createForgottenMines(deps) {
 
   function finishTreasureGame(room) {
     const state = room.state;
-    finish(room, Logic.winnerForScores(state.scores), "三个宝物均已找到");
+    const winner = Logic.winnerForScores(state.scores);
+    const outcome = winner === null ? Logic.FINISH_OUTCOMES.DRAW : Logic.FINISH_OUTCOMES.WINNER;
+    finish(room, winner, outcome, "三个宝物均已找到");
   }
 
   function move(room, ws, message) {

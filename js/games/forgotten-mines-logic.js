@@ -6,6 +6,11 @@ const BOARD_ROWS = 11;
 const BOARD_COLS = 11;
 const CELL_COUNT = BOARD_ROWS * BOARD_COLS;
 const MINE_COUNT = 15;
+const FINISH_OUTCOMES = Object.freeze({
+  WINNER: "WINNER",
+  DRAW: "DRAW",
+  NO_WINNER: "NO_WINNER",
+});
 const START_CELLS = Object.freeze([10, 110]);
 const TREASURE_CELLS = Object.freeze([0, 60, 120]);
 const PROTECTED_HOME_CELLS = Object.freeze([
@@ -89,6 +94,7 @@ const api = {
   BOARD_COLS,
   CELL_COUNT,
   MINE_COUNT,
+  FINISH_OUTCOMES,
   START_CELLS,
   TREASURE_CELLS,
   PROTECTED_HOME_CELLS,

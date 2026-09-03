@@ -181,11 +181,12 @@ async function leaveAll(...sockets) {
     room.state.positions[second] = 108;
     room.state.positions[first] = L.START_CELLS[first];
     room.state.collectedTreasures = [{ cell: 0, seat: first, value: 10, order: 1 }, { cell: 60, seat: second, value: 15, order: 2 }];
-    room.state.scores = [20, 20];
+    room.state.scores = second === 0 ? [0, 20] : [20, 0];
     const finishedMessages = [next(sockets[0], "gameFinished"), next(sockets[1], "gameFinished")];
     send(sockets[second], "gameAction", { action: "move", cell: 120, winner: first, score: -999 });
     const terminal = await Promise.all(finishedMessages);
-    assert.equal(terminal[0].winner, second);
+    assert.equal(terminal[0].winner, null);
+    assert.equal(terminal[0].finishOutcome, L.FINISH_OUTCOMES.DRAW);
     assert.deepEqual(terminal[0].scores, terminal[1].scores);
     terminal.forEach(assertNoPlacement);
     assert.equal(room.state.phase, "FINISHED");
@@ -270,6 +271,7 @@ async function leaveAll(...sockets) {
     gameHandlers.get("forgotten-mines").handlePlacementTimeout(timeoutRoom, timeoutRoom.state);
     const timeoutResult = await timeoutFinished;
     assert.equal(timeoutResult.winner, 0);
+    assert.equal(timeoutResult.finishOutcome, L.FINISH_OUTCOMES.WINNER);
     assert.equal(timeoutRoom.state.placements[0].size, 15);
     assert.equal(timeoutRoom.state.placements[1].size, 7);
     assertNoPlacement(timeoutResult);
@@ -278,7 +280,19 @@ async function leaveAll(...sockets) {
     const bothFailRoom = rooms.get(bothFail.created.code);
     const noWinner = next(bothFail.a, "gameFinished");
     gameHandlers.get("forgotten-mines").handlePlacementTimeout(bothFailRoom, bothFailRoom.state);
-    assert.equal((await noWinner).winner, null);
+    const noWinnerResult = await noWinner;
+    assert.equal(noWinnerResult.winner, null);
+    assert.equal(noWinnerResult.finishOutcome, L.FINISH_OUTCOMES.NO_WINNER);
+    await close(bothFail.a);
+    const bothFailRestored = await open(url); live.push(bothFailRestored);
+    const bothFailRejoinP = next(bothFailRestored, "rejoined");
+    send(bothFailRestored, "rejoin", { code: bothFail.created.code, seat: 0, token: bothFail.starts[0].token });
+    const bothFailRejoin = await bothFailRejoinP;
+    assert.equal(bothFailRejoin.state.phase, "FINISHED");
+    assert.equal(bothFailRejoin.state.winner, null);
+    assert.equal(bothFailRejoin.state.finishOutcome, L.FINISH_OUTCOMES.NO_WINNER);
+    assert.match(bothFailRejoin.state.finishReason, /双方/);
+    bothFail.a = bothFailRestored;
 
     const bothReady = await createAndJoin(url, "forgotten-mines", ["自动甲", "自动乙"]); live.push(bothReady.a, bothReady.b);
     const bothReadyRoom = rooms.get(bothReady.created.code);
