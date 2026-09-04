@@ -11,6 +11,8 @@
 
 ![遗忘的地雷寻宝阶段](docs/screenshots/forgotten-mines-game.png)
 
+![遗忘的地雷终局雷图复盘](docs/screenshots/forgotten-mines-final-reveal.png)
+
 ## 在线游玩
 
 在首页选择游戏，一位玩家创建房间并分享四位房间码，另一位玩家选择任意游戏卡后输入房间码加入；服务器会以房间记录的游戏为准。短暂断线或刷新会在 45 秒内使用本地会话 token 恢复原席位。终局后双方都点击“再来一局”，即可在同一房间开始该游戏的全新对局。
