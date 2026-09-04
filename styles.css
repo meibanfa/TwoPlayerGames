@@ -32,6 +32,12 @@ h1 { font-size: clamp(2.5rem, 8vw, 5rem); margin: .15em 0; } h2 { margin-top: 0;
 .forgotten-scoreboard .turn.green-turn { border-color: #6fc582; }
 .forgotten-meta { color: #f5bf68; font-weight: 700; }
 .forgotten-legend { width: min(94vw, 620px); margin: 10px auto 0; display: flex; flex-wrap: wrap; justify-content: center; gap: 5px 12px; color: #e8dac3; font-size: .82rem; }
+.final-mine-legend { width: min(94vw, 620px); margin: 10px auto 0; padding: 8px; display: flex; flex-wrap: wrap; justify-content: center; gap: 6px 14px; border: 1px solid #d6b36b; border-radius: 10px; color: #f3e3c7; font-size: .82rem; }
+.legend-mine, .legend-overlap, .legend-detonated { display: inline-block; border-radius: 4px; padding: 2px 4px; }
+.red-final-mine { color: #ffe2df; background: #8f302b; }
+.green-final-mine { color: #e1ffe5; background: #236f38; }
+.legend-overlap { border: 1px solid #e7bb67; background: linear-gradient(90deg, #8f302b 50%, #236f38 50%); }
+.legend-detonated { border: 2px solid #ffb02e; background: #6f211b; }
 .forgotten-board { width: min(94vw, 620px); aspect-ratio: 1; margin: 14px auto; display: grid; grid-template-columns: repeat(11, 1fr); gap: 2px; }
 .forgotten-cell { min-width: 0; padding: 1px; border: 1px solid #8b6b49; border-radius: 4px; background: #62472f; color: #fff8e8; cursor: default; position: relative; overflow: hidden; }
 .forgotten-cell:not(:disabled) { cursor: pointer; }
@@ -45,6 +51,12 @@ h1 { font-size: clamp(2.5rem, 8vw, 5rem); margin: .15em 0; } h2 { margin-top: 0;
 .forgotten-cell .treasure-collected { color: #dac9a5; filter: none; }
 .forgotten-cell .pawn { z-index: 2; font-size: clamp(.72rem, 3vw, 1.4rem); filter: drop-shadow(0 2px 2px #000a); animation: pawn-arrive .18s ease-out; }
 .forgotten-cell .state-marker { left: 27%; top: 68%; font-size: clamp(.58rem, 2.4vw, 1.05rem); }
+.forgotten-cell .final-mine-stack { position: absolute; inset: 12px 1px 1px; z-index: 1; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-content: end; gap: 1px; }
+.forgotten-cell .final-mine { min-width: 0; border: 1px solid currentColor; border-radius: 3px; padding: 1px 0; font-size: clamp(.3rem, 1.1vw, .54rem); font-weight: 900; line-height: 1; }
+.forgotten-cell .overlap-final-mine { outline: 2px solid #e7bb67; outline-offset: -1px; }
+.forgotten-cell .detonated-final-cell { background: #6f211bcc; outline: 2px solid #ffb02e; outline-offset: -2px; }
+.forgotten-cell .detonated-final-mine { text-decoration: underline; text-decoration-color: #ffd65a; text-decoration-thickness: 2px; }
+.forgotten-cell .final-explosion { position: absolute; left: 50%; top: 28%; transform: translate(-50%, -50%); font-size: clamp(.6rem, 2.4vw, 1.1rem); filter: drop-shadow(0 0 4px #ffb02e); }
 .forgotten-cell.red-home { box-shadow: inset 0 0 0 2px #b84d47; }
 .forgotten-cell.green-home { box-shadow: inset 0 0 0 2px #4b955c; }
 .forgotten-cell.red-start-cell { border-color: #ff8b82; }
