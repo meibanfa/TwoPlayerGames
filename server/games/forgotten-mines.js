@@ -11,6 +11,7 @@ function createForgottenMines(deps) {
       gameId: "forgotten-mines",
       phase,
       placements: [new Set(), new Set()],
+      originalPlacements: [null, null],
       confirmed: [false, false],
       placementDeadline: null,
       positions: [...Logic.START_CELLS],
@@ -19,6 +20,7 @@ function createForgottenMines(deps) {
       pendingReentrySeat: null,
       exhaustedSafeCells: new Set(),
       detonatedCells: new Set(),
+      detonatedMineHistory: [],
       collectedTreasures: [],
       latestEvent: null,
       winner: null,
@@ -48,6 +50,13 @@ function createForgottenMines(deps) {
       finishReason: state.finishReason,
     };
     if (state.phase === "PLACING" && !state.confirmed[seat]) output.placement = [...state.placements[seat]];
+    if (state.phase === "FINISHED") {
+      output.finalMineReveal = {
+        red: [...(state.originalPlacements[0] || [])],
+        green: [...(state.originalPlacements[1] || [])],
+        detonated: state.detonatedMineHistory.map((entry) => ({ cell: entry.cell, owners: [...entry.owners] })),
+      };
+    }
     return output;
   }
 
@@ -57,6 +66,7 @@ function createForgottenMines(deps) {
   function finish(room, winner, outcome, reason) {
     const state = room.state;
     if (state.phase === "FINISHED") return;
+    state.originalPlacements = state.originalPlacements.map((placement, seat) => placement || new Set(state.placements[seat]));
     clearTimeout(room.placementTimer);
     room.placementTimer = null;
     state.phase = "FINISHED";
@@ -75,6 +85,7 @@ function createForgottenMines(deps) {
     if (state.phase !== "PLACING" || !state.confirmed.every(Boolean)) return;
     clearTimeout(room.placementTimer);
     room.placementTimer = null;
+    state.originalPlacements = state.originalPlacements.map((placement, seat) => placement || new Set(state.placements[seat]));
     state.phase = "PLAYING";
     state.placementDeadline = null;
     state.currentTurn = crypto.randomInt(0, 2);
@@ -121,6 +132,7 @@ function createForgottenMines(deps) {
     const seat = ws.seat;
     const state = room.state;
     if (state.phase !== "PLACING" || state.confirmed[seat] || !Logic.validatePlacement([...state.placements[seat]])) return sendError(ws, "请先在合法位置埋满 15 颗雷。");
+    state.originalPlacements[seat] = new Set(state.placements[seat]);
     state.confirmed[seat] = true;
     emitAll(room);
     if (state.confirmed.every(Boolean)) beginPlay(room);
@@ -141,12 +153,14 @@ function createForgottenMines(deps) {
     state.positions[seat] = message.cell;
     const hit = Logic.resolveMineHit({ mineSets: state.placements, scores: state.scores, seat, cell: message.cell });
     if (hit) {
+      const owners = state.placements.flatMap((mines, owner) => mines.has(message.cell) ? [owner] : []);
       state.placements = hit.mineSets;
       state.scores = hit.scores;
       state.positions[seat] = null;
       state.phase = "REENTRY";
       state.pendingReentrySeat = seat;
       state.detonatedCells.add(message.cell);
+      state.detonatedMineHistory.push({ cell: message.cell, owners });
       state.latestEvent = { kind: "mine", seat, cell: message.cell, scoreDelta: -5, text: "踩到地雷，-5 分，请从起点旁重新选择一格" };
       emitAll(room);
       return;
