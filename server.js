@@ -161,6 +161,7 @@ function joinRoom(ws, message) {
     token: room.tokens[seat],
     placementDeadline: room.state.placementDeadline,
   }));
+  room.players.forEach((_, seat) => send(room.players[seat], "gameState", handler.publicState(room, seat)));
 }
 function restartRoom(ws) {
   const room = roomFor(ws);

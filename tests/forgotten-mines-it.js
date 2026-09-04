@@ -45,11 +45,13 @@ async function createAndJoin(url, gameId, names = ["甲", "乙"], frames = [[], 
   assert.equal(created.gameId, gameId);
   assert.equal((await waitingP).gameId, gameId);
   const starts = [next(a, "start"), next(b, "start")];
+  const initialStates = [next(a, "gameState"), next(b, "gameState")];
   send(b, "join", { code: created.code, playerName: names[1] });
   const [startA, startB] = await Promise.all(starts);
+  const publicStates = await Promise.all(initialStates);
   assert.equal(startA.gameId, gameId);
   assert.equal(startB.gameId, gameId);
-  return { a, b, created, starts: [startA, startB], frames };
+  return { a, b, created, starts: [startA, startB], initialStates: publicStates, frames };
 }
 async function toggleMany(ws, cells) {
   for (const cell of cells) {
@@ -78,6 +80,11 @@ async function leaveAll(...sockets) {
     const match = await createAndJoin(url, "forgotten-mines", ["红方", "绿方"], forgottenFrames); live.push(match.a, match.b);
     assert.notEqual(minesRoom.created.code, match.created.code);
     assert.equal(rooms.get(match.created.code).gameId, "forgotten-mines");
+    match.initialStates.forEach((state) => {
+      assert.equal(state.phase, "PLACING");
+      assert.deepEqual(state.positions, L.START_CELLS);
+      assert.deepEqual(state.treasures, L.TREASURE_CELLS);
+    });
 
     const invalidReady = next(match.a, "error");
     send(match.a, "gameAction", { action: "confirmPlacement", score: 999, winner: 0 });
@@ -118,7 +125,12 @@ async function leaveAll(...sockets) {
     const playingStates = [next(match.a, "gameState", (message) => message.phase === "PLAYING"), next(match.b, "gameState", (message) => message.phase === "PLAYING")];
     send(match.b, "gameAction", { action: "confirmPlacement", position: 60, score: 999 });
     const [playingA, playingB] = await Promise.all(playingStates);
-    for (const state of [playingA, playingB]) { assertNoPlacement(state); assert.equal([0, 1].includes(state.currentTurn), true); }
+    for (const state of [playingA, playingB]) {
+      assertNoPlacement(state);
+      assert.equal([0, 1].includes(state.currentTurn), true);
+      assert.deepEqual(state.positions, L.START_CELLS);
+      assert.deepEqual(state.treasures, L.TREASURE_CELLS);
+    }
     assert.deepEqual(playingA.positions, playingB.positions);
     assert.deepEqual(playingA.scores, playingB.scores);
 
@@ -126,7 +138,6 @@ async function leaveAll(...sockets) {
     const sockets = [match.a, match.b];
     const first = room.state.currentTurn;
     const second = 1 - first;
-    const safeSteps = first === 0 ? [20, 99] : [99, 20];
     const playingSocket = sockets[second];
     await close(playingSocket);
     const playingRestored = await open(url, forgottenFrames[second]); live.push(playingRestored);
@@ -134,17 +145,35 @@ async function leaveAll(...sockets) {
     send(playingRestored, "rejoin", { code: room.code, seat: second, token: match.starts[second].token });
     const playingRejoin = await playingRejoinP;
     assert.equal(playingRejoin.state.phase, "PLAYING");
+    assert.deepEqual(playingRejoin.state.positions, room.state.positions);
+    assert.equal(playingRejoin.state.currentTurn, first);
     assertNoPlacement(playingRejoin.state);
     sockets[second] = playingRestored;
     if (second === 0) match.a = playingRestored; else match.b = playingRestored;
+    const beforeRejectedMove = { positions: [...room.state.positions], currentTurn: room.state.currentTurn, scores: [...room.state.scores] };
+    const inactiveMove = next(sockets[second], "error");
+    send(sockets[second], "gameAction", { action: "move", cell: second === 0 ? 20 : 100 });
+    assert.match((await inactiveMove).message, /不能移动/);
+    assert.deepEqual({ positions: room.state.positions, currentTurn: room.state.currentTurn, scores: room.state.scores }, beforeRejectedMove);
+    for (const destination of [first === 0 ? 30 : 88, first === 0 ? 0 : 120]) {
+      const illegalMove = next(sockets[first], "error");
+      send(sockets[first], "gameAction", { action: "move", cell: destination });
+      assert.match((await illegalMove).message, /相邻/);
+      assert.deepEqual({ positions: room.state.positions, currentTurn: room.state.currentTurn, scores: room.state.scores }, beforeRejectedMove);
+    }
+    const firstDestination = first === 0 ? 20 : 100;
+    const secondDestination = second === 0 ? 20 : 100;
     const safeState1 = next(sockets[second], "gameState", (message) => message.currentTurn === second);
-    send(sockets[first], "gameAction", { action: "move", cell: safeSteps[0], score: 500, currentTurn: first });
-    await safeState1;
+    send(sockets[first], "gameAction", { action: "move", cell: firstDestination, score: 500, currentTurn: first });
+    const firstMoveState = await safeState1;
+    assert.equal(room.state.positions[first], firstDestination);
+    assert.equal(L.neighbors(L.START_CELLS[first]).includes(firstDestination), true, "diagonal one-cell move was not applied");
+    assert.equal(firstMoveState.currentTurn, second);
     const repeated = next(sockets[first], "error");
-    send(sockets[first], "gameAction", { action: "move", cell: safeSteps[0] });
+    send(sockets[first], "gameAction", { action: "move", cell: firstDestination });
     assert.match((await repeated).message, /不能移动/);
     const safeState2 = next(sockets[first], "gameState", (message) => message.currentTurn === first);
-    send(sockets[second], "gameAction", { action: "move", cell: safeSteps[1] });
+    send(sockets[second], "gameAction", { action: "move", cell: secondDestination });
     await safeState2;
 
     const mineCell = first === 0 ? 30 : 88;
@@ -153,6 +182,8 @@ async function leaveAll(...sockets) {
     send(sockets[first], "gameAction", { action: "move", cell: mineCell, score: 1000, result: "safe" });
     const reentry = await Promise.all(reentryStates);
     assert.equal(reentry[0].scores[first], scoreBeforeMine - 5);
+    assert.equal(reentry[0].currentTurn, first);
+    assert.equal(reentry[1].currentTurn, first);
     assert.equal(reentry[0].latestEvent.text.includes("-5"), true);
     reentry.forEach(assertNoPlacement);
     assert.equal(room.state.placements[0].has(mineCell), false);
@@ -175,6 +206,7 @@ async function leaveAll(...sockets) {
     const afterReentry = next(sockets[second], "gameState", (message) => message.phase === "PLAYING" && message.currentTurn === second);
     send(sockets[first], "gameAction", { action: "reenter", cell: reentryCell, score: 999 });
     const reentered = await afterReentry;
+    assert.equal(reentered.currentTurn, second);
     assert.equal(reentered.exhaustedSafeCells.includes(reentryCell), false);
 
     room.state.currentTurn = second;
@@ -190,6 +222,7 @@ async function leaveAll(...sockets) {
     assert.deepEqual(terminal[0].scores, terminal[1].scores);
     terminal.forEach(assertNoPlacement);
     assert.equal(room.state.phase, "FINISHED");
+    assert.equal(room.state.currentTurn, null, "third treasure advanced the turn after finishing");
 
     const restartA = next(sockets[0], "restart");
     const restartB = next(sockets[1], "restart");
@@ -209,11 +242,18 @@ async function leaveAll(...sockets) {
     collisionRoom.state.phase = "PLAYING";
     collisionRoom.state.confirmed = [true, true];
     collisionRoom.state.placementDeadline = null;
-    collisionRoom.state.positions = [40, 21];
+    collisionRoom.state.positions = [L.START_CELLS[0], 21];
     collisionRoom.state.scores = [3, 4];
     collisionRoom.state.currentTurn = 1;
     collisionRoom.state.placements = [new Set([30]), new Set()];
     const collisionSockets = [collisionMatch.a, collisionMatch.b];
+
+    const occupiedPawnMove = next(collisionSockets[1], "error");
+    send(collisionSockets[1], "gameAction", { action: "move", cell: L.START_CELLS[0] });
+    assert.match((await occupiedPawnMove).message, /占用/);
+    assert.deepEqual(collisionRoom.state.positions, [L.START_CELLS[0], 21]);
+    assert.equal(collisionRoom.state.currentTurn, 1);
+    collisionRoom.state.positions[0] = 40;
 
     const homeMoveStates = collisionSockets.map((socket) => next(socket, "gameState", (message) => message.currentTurn === 0));
     send(collisionSockets[1], "gameAction", { action: "move", cell: L.START_CELLS[0] });
