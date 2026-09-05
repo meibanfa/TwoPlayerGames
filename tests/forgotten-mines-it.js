@@ -35,6 +35,15 @@ function assertNoPlacement(value, path = "payload") {
     assertNoPlacement(child, `${path}.${key}`);
   }
 }
+function assertNoTerminalReveal(value, path = "payload") {
+  if (!value || typeof value !== "object") return;
+  for (const [key, child] of Object.entries(value)) {
+    assert.notEqual(key, "originalPlacements", `${path}.${key} leaked original placements`);
+    assert.notEqual(key, "detonatedMineHistory", `${path}.${key} leaked detonation ownership`);
+    assert.notEqual(key, "finalMineReveal", `${path}.${key} leaked the terminal mine reveal`);
+    assertNoTerminalReveal(child, `${path}.${key}`);
+  }
+}
 async function createAndJoin(url, gameId, names = ["甲", "乙"], frames = [[], []]) {
   const a = await open(url, frames[0]);
   const b = await open(url, frames[1]);
@@ -84,15 +93,18 @@ async function leaveAll(...sockets) {
       assert.equal(state.phase, "PLACING");
       assert.deepEqual(state.positions, L.START_CELLS);
       assert.deepEqual(state.treasures, L.TREASURE_CELLS);
+      assertNoTerminalReveal(state);
     });
 
     const invalidReady = next(match.a, "error");
     send(match.a, "gameAction", { action: "confirmPlacement", score: 999, winner: 0 });
     assert.match((await invalidReady).message, /15/);
     const legal = Array.from({ length: L.CELL_COUNT }, (_, cell) => cell).filter(L.isLegalMineCell);
-    const sharedPlacement = [30, 88, ...legal.filter((cell) => ![30, 88].includes(cell)).slice(0, 13)];
-    await toggleMany(match.a, sharedPlacement);
-    await toggleMany(match.b, sharedPlacement);
+    const placementPool = legal.filter((cell) => ![30, 88].includes(cell));
+    const redPlacement = [30, 88, ...placementPool.slice(0, 13)];
+    const greenPlacement = [30, 88, ...placementPool.slice(20, 33)];
+    await toggleMany(match.a, redPlacement);
+    await toggleMany(match.b, greenPlacement);
 
     const lockA = next(match.a, "gameState", (message) => message.confirmed?.[0] === true);
     send(match.a, "gameAction", { action: "confirmPlacement" });
@@ -111,6 +123,7 @@ async function leaveAll(...sockets) {
     assert.equal(restoredA.gameId, "forgotten-mines");
     assert.equal(restoredA.state.placement, undefined);
     assertNoPlacement(restoredA.state);
+    assertNoTerminalReveal(restoredA.state);
     match.a = rejoinedA;
 
     const oldB = match.b;
@@ -119,7 +132,8 @@ async function leaveAll(...sockets) {
     const restoredBP = next(rejoinedB, "rejoined");
     send(rejoinedB, "rejoin", { code: match.created.code, seat: 1, token: match.starts[1].token });
     const restoredB = await restoredBP;
-    assert.deepEqual(new Set(restoredB.state.placement), new Set(sharedPlacement), "unconfirmed player did not recover only their placement");
+    assert.deepEqual(new Set(restoredB.state.placement), new Set(greenPlacement), "unconfirmed player did not recover only their placement");
+    assertNoTerminalReveal(restoredB.state);
     match.b = rejoinedB;
 
     const playingStates = [next(match.a, "gameState", (message) => message.phase === "PLAYING"), next(match.b, "gameState", (message) => message.phase === "PLAYING")];
@@ -127,6 +141,7 @@ async function leaveAll(...sockets) {
     const [playingA, playingB] = await Promise.all(playingStates);
     for (const state of [playingA, playingB]) {
       assertNoPlacement(state);
+      assertNoTerminalReveal(state);
       assert.equal([0, 1].includes(state.currentTurn), true);
       assert.deepEqual(state.positions, L.START_CELLS);
       assert.deepEqual(state.treasures, L.TREASURE_CELLS);
@@ -148,6 +163,7 @@ async function leaveAll(...sockets) {
     assert.deepEqual(playingRejoin.state.positions, room.state.positions);
     assert.equal(playingRejoin.state.currentTurn, first);
     assertNoPlacement(playingRejoin.state);
+    assertNoTerminalReveal(playingRejoin.state);
     sockets[second] = playingRestored;
     if (second === 0) match.a = playingRestored; else match.b = playingRestored;
     const beforeRejectedMove = { positions: [...room.state.positions], currentTurn: room.state.currentTurn, scores: [...room.state.scores] };
@@ -186,6 +202,7 @@ async function leaveAll(...sockets) {
     assert.equal(reentry[1].currentTurn, first);
     assert.equal(reentry[0].latestEvent.text.includes("-5"), true);
     reentry.forEach(assertNoPlacement);
+    reentry.forEach(assertNoTerminalReveal);
     assert.equal(room.state.placements[0].has(mineCell), false);
     assert.equal(room.state.placements[1].has(mineCell), false);
 
@@ -200,6 +217,7 @@ async function leaveAll(...sockets) {
     const actorRejoin = await actorRejoinP;
     assert.equal(actorRejoin.state.phase, "REENTRY");
     assertNoPlacement(actorRejoin.state);
+    assertNoTerminalReveal(actorRejoin.state);
     sockets[first] = actorRestored;
     if (first === 0) match.a = actorRestored; else match.b = actorRestored;
     const reentryCell = L.legalReentryCells(first, room.state.positions[second]).find((cell) => !room.state.exhaustedSafeCells.has(cell));
@@ -215,14 +233,34 @@ async function leaveAll(...sockets) {
     room.state.collectedTreasures = [{ cell: 0, seat: first, value: 10, order: 1 }, { cell: 60, seat: second, value: 15, order: 2 }];
     room.state.scores = second === 0 ? [0, 20] : [20, 0];
     const finishedMessages = [next(sockets[0], "gameFinished"), next(sockets[1], "gameFinished")];
+    const finishedStates = sockets.map((socket) => next(socket, "gameState", (message) => message.phase === "FINISHED"));
     send(sockets[second], "gameAction", { action: "move", cell: 120, winner: first, score: -999 });
-    const terminal = await Promise.all(finishedMessages);
+    const [terminal, revealedStates] = await Promise.all([Promise.all(finishedMessages), Promise.all(finishedStates)]);
     assert.equal(terminal[0].winner, null);
     assert.equal(terminal[0].finishOutcome, L.FINISH_OUTCOMES.DRAW);
     assert.deepEqual(terminal[0].scores, terminal[1].scores);
     terminal.forEach(assertNoPlacement);
+    terminal.forEach(assertNoTerminalReveal);
     assert.equal(room.state.phase, "FINISHED");
     assert.equal(room.state.currentTurn, null, "third treasure advanced the turn after finishing");
+    for (const state of revealedStates) {
+      assert.deepEqual(new Set(state.finalMineReveal.red), new Set(redPlacement));
+      assert.deepEqual(new Set(state.finalMineReveal.green), new Set(greenPlacement));
+      assert.deepEqual(state.finalMineReveal.detonated, [{ cell: mineCell, owners: [0, 1] }]);
+      assert.equal(state.finalMineReveal.red.includes(placementPool[0]), true, "untriggered red mine missing from reveal");
+      assert.equal(state.finalMineReveal.green.includes(placementPool[20]), true, "untriggered green mine missing from reveal");
+    }
+    assert.deepEqual(revealedStates[0].finalMineReveal, revealedStates[1].finalMineReveal);
+
+    await close(sockets[0]);
+    const finishedRestored = await open(url, forgottenFrames[0]); live.push(finishedRestored);
+    const finishedRejoinP = next(finishedRestored, "rejoined");
+    send(finishedRestored, "rejoin", { code: room.code, seat: 0, token: match.starts[0].token });
+    const finishedRejoin = await finishedRejoinP;
+    assert.equal(finishedRejoin.state.phase, "FINISHED");
+    assert.deepEqual(finishedRejoin.state.finalMineReveal, revealedStates[0].finalMineReveal);
+    sockets[0] = finishedRestored;
+    match.a = finishedRestored;
 
     const restartA = next(sockets[0], "restart");
     const restartB = next(sockets[1], "restart");
@@ -234,8 +272,11 @@ async function leaveAll(...sockets) {
     assert.equal(room.state.phase, "PLACING");
     assert.deepEqual(room.state.scores, [0, 0]);
     assert.equal(room.state.placements[0].size, 0);
+    assert.deepEqual(room.state.originalPlacements, [null, null]);
+    assert.deepEqual(room.state.detonatedMineHistory, []);
     assert.equal(room.state.exhaustedSafeCells.size, 0);
     assert.equal(room.state.collectedTreasures.length, 0);
+    assert.equal(Object.prototype.hasOwnProperty.call(gameHandlers.get("forgotten-mines").publicState(room, 0), "finalMineReveal"), false);
 
     const collisionMatch = await createAndJoin(url, "forgotten-mines", ["重入甲", "占位乙"]); live.push(collisionMatch.a, collisionMatch.b);
     const collisionRoom = rooms.get(collisionMatch.created.code);
@@ -246,6 +287,7 @@ async function leaveAll(...sockets) {
     collisionRoom.state.scores = [3, 4];
     collisionRoom.state.currentTurn = 1;
     collisionRoom.state.placements = [new Set([30]), new Set()];
+    collisionRoom.state.originalPlacements = [new Set([30]), new Set([41])];
     const collisionSockets = [collisionMatch.a, collisionMatch.b];
 
     const occupiedPawnMove = next(collisionSockets[1], "error");
@@ -273,6 +315,7 @@ async function leaveAll(...sockets) {
       assert.deepEqual(state.positions, [null, L.START_CELLS[0]]);
       assert.equal(new Set(state.positions.filter(L.isCell)).size, state.positions.filter(L.isCell).length);
       assertNoPlacement(state);
+      assertNoTerminalReveal(state);
     });
 
     await close(collisionSockets[0]);
@@ -284,6 +327,7 @@ async function leaveAll(...sockets) {
     assert.deepEqual(collisionRejoin.state.positions, [null, L.START_CELLS[0]]);
     assert.equal(new Set(collisionRejoin.state.positions.filter(L.isCell)).size, collisionRejoin.state.positions.filter(L.isCell).length);
     assertNoPlacement(collisionRejoin.state);
+    assertNoTerminalReveal(collisionRejoin.state);
     collisionSockets[0] = collisionRestored;
     collisionMatch.a = collisionRestored;
 
@@ -301,12 +345,23 @@ async function leaveAll(...sockets) {
       assert.deepEqual(state.positions, [collisionReentryCell, L.START_CELLS[0]]);
       assert.deepEqual(state.scores, reentryScores);
       assert.equal(state.exhaustedSafeCells.includes(collisionReentryCell), false);
+      assertNoTerminalReveal(state);
     });
+
+    collisionRoom.state.currentTurn = 1;
+    collisionRoom.state.positions = [collisionReentryCell, 108];
+    collisionRoom.state.collectedTreasures = [{ cell: 0, seat: 0, value: 10, order: 1 }, { cell: 60, seat: 1, value: 15, order: 2 }];
+    const collisionFinishedState = next(collisionSockets[0], "gameState", (message) => message.phase === "FINISHED");
+    send(collisionSockets[1], "gameAction", { action: "move", cell: 120 });
+    const singleOwnerReveal = (await collisionFinishedState).finalMineReveal;
+    assert.deepEqual(singleOwnerReveal.red, [30], "detonated single-owner mine was lost from original layout");
+    assert.deepEqual(singleOwnerReveal.green, [41]);
+    assert.deepEqual(singleOwnerReveal.detonated, [{ cell: 30, owners: [0] }]);
 
     const timeoutMatch = await createAndJoin(url, "forgotten-mines", ["超时甲", "超时乙"]); live.push(timeoutMatch.a, timeoutMatch.b);
     const timeoutRoom = rooms.get(timeoutMatch.created.code);
-    timeoutRoom.state.placements[0] = new Set(sharedPlacement);
-    timeoutRoom.state.placements[1] = new Set(sharedPlacement.slice(0, 7));
+    timeoutRoom.state.placements[0] = new Set(redPlacement);
+    timeoutRoom.state.placements[1] = new Set(greenPlacement.slice(0, 7));
     const timeoutFinished = next(timeoutMatch.a, "gameFinished");
     gameHandlers.get("forgotten-mines").handlePlacementTimeout(timeoutRoom, timeoutRoom.state);
     const timeoutResult = await timeoutFinished;
@@ -315,6 +370,7 @@ async function leaveAll(...sockets) {
     assert.equal(timeoutRoom.state.placements[0].size, 15);
     assert.equal(timeoutRoom.state.placements[1].size, 7);
     assertNoPlacement(timeoutResult);
+    assertNoTerminalReveal(timeoutResult);
 
     const bothFail = await createAndJoin(url, "forgotten-mines", ["空甲", "空乙"]); live.push(bothFail.a, bothFail.b);
     const bothFailRoom = rooms.get(bothFail.created.code);
@@ -332,11 +388,12 @@ async function leaveAll(...sockets) {
     assert.equal(bothFailRejoin.state.winner, null);
     assert.equal(bothFailRejoin.state.finishOutcome, L.FINISH_OUTCOMES.NO_WINNER);
     assert.match(bothFailRejoin.state.finishReason, /双方/);
+    assert.deepEqual(bothFailRejoin.state.finalMineReveal, { red: [], green: [], detonated: [] });
     bothFail.a = bothFailRestored;
 
     const bothReady = await createAndJoin(url, "forgotten-mines", ["自动甲", "自动乙"]); live.push(bothReady.a, bothReady.b);
     const bothReadyRoom = rooms.get(bothReady.created.code);
-    bothReadyRoom.state.placements = [new Set(sharedPlacement), new Set(sharedPlacement)];
+    bothReadyRoom.state.placements = [new Set(redPlacement), new Set(greenPlacement)];
     const autoStarted = next(bothReady.a, "gameState", (message) => message.phase === "PLAYING");
     gameHandlers.get("forgotten-mines").handlePlacementTimeout(bothReadyRoom, bothReadyRoom.state);
     await autoStarted;
@@ -358,8 +415,11 @@ async function leaveAll(...sockets) {
     assert.equal(rooms.has(expiredCode), false);
     assert.equal(expiring.a.roomCode, undefined);
 
-    const postConfirmFrames = forgottenFrames.flat().filter((message) => ["PLAYING", "REENTRY", "FINISHED"].includes(message.phase) || message.type === "gameFinished");
-    postConfirmFrames.forEach(assertNoPlacement);
+    const hiddenFrames = forgottenFrames.flat().filter((message) => ["PLAYING", "REENTRY"].includes(message.phase) || message.type === "gameFinished");
+    hiddenFrames.forEach((message) => {
+      assertNoPlacement(message);
+      assertNoTerminalReveal(message);
+    });
     await leaveAll(unsupported, minesRoom.a, minesRoom.b, match.a, match.b, collisionMatch.a, collisionMatch.b, timeoutMatch.a, timeoutMatch.b, bothFail.a, bothFail.b, bothReady.a, bothReady.b, expiring.a);
     console.log("ok online: multi-game forgotten-mines authority, secrecy, timeout, reconnect, and restart");
   } finally {

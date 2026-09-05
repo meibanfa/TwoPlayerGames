@@ -24,7 +24,7 @@
 
 互坑扫雷的纯规则位于 `js/games/minesweeper-duel-logic.js`，服务器处理器位于 `server/games/minesweeper-duel.js`。服务器保存交换后的雷区、揭示、旗子、罚时和时间戳；终局前按席位只返回合法揭示的信息。
 
-遗忘的地雷的纯规则位于 `js/games/forgotten-mines-logic.js`，权威状态机位于 `server/games/forgotten-mines.js`。客户端只能切换本人未确认的雷、确认、请求移动或选择重入。服务器计算命中、动态邻雷分、宝物、位置、回合、分数和终局。确认后该玩家的公开状态不再包含本人雷图；任何阶段都不包含对手雷图，终局也不披露完整布局。
+遗忘的地雷的纯规则位于 `js/games/forgotten-mines-logic.js`，权威状态机位于 `server/games/forgotten-mines.js`。客户端只能切换本人未确认的雷、确认、请求移动或选择重入。服务器计算命中、动态邻雷分、宝物、位置、回合、分数和终局。确认后该玩家的公开状态不再包含本人雷图；`WAITING`、`PLACING`、`PLAYING` 和 `REENTRY` 均不包含对手雷图。服务器另存不可变的原始布置与带归属的引爆历史，只有权威阶段进入 `FINISHED` 后，按席位公开序列化器才会附加完整终局雷图供复盘；重开会连同该历史一并清空。
 
 ## 状态与清理
 

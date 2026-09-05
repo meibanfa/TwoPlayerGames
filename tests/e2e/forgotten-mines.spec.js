@@ -17,6 +17,10 @@ function coordinateSets(value, key = "", found = []) {
 function containsMineSet(value, mines) {
   return coordinateSets(value).some((cells) => { const set = new Set(cells); return mines.every((cell) => set.has(cell)); });
 }
+function hasKey(value, wanted) {
+  if (!value || typeof value !== "object") return false;
+  return Object.entries(value).some(([key, child]) => wanted.includes(key) || hasKey(child, wanted));
+}
 async function captureServerFrames(page) {
   await page.addInitScript(() => {
     window.__TEST_WS_FRAMES__ = [];
@@ -70,15 +74,17 @@ function stepToward(from, target) {
 }
 
 test("two browsers complete forgotten mines without exposing hidden layouts", async ({ browser }) => {
+  test.setTimeout(60_000);
   const aContext = await browser.newContext({ viewport: { width: 390, height: 844 }, serviceWorkers: "block" });
   const bContext = await browser.newContext({ serviceWorkers: "block" });
   const a = await aContext.newPage();
   const b = await bContext.newPage();
+  await captureServerFrames(a);
   await captureServerFrames(b);
   const routeCells = new Set([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 20, 21, 24, 36, 48, 60, 72, 84, 96, 99, 100, 108, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120]);
   const candidates = Array.from({ length: L.CELL_COUNT }, (_, cell) => cell).filter((cell) => L.isLegalMineCell(cell) && !routeCells.has(cell) && ![30, 88].includes(cell));
-  const placementA = [30, ...candidates.slice(0, 14)];
-  const placementB = [88, ...candidates.slice(20, 34)];
+  const placementA = [30, 88, ...candidates.slice(0, 13)];
+  const placementB = [30, 88, ...candidates.slice(20, 33)];
   try {
     await create(a, "红方测试");
     const code = (await a.locator("#roomLabel").textContent()).match(/\d{4}/)[0];
@@ -99,6 +105,7 @@ test("two browsers complete forgotten mines without exposing hidden layouts", as
     await expect(a.locator(".forgotten-board")).toBeVisible();
     await expect(a.locator(".forgotten-status")).toContainText("忘掉雷图");
     await expect(a.locator(".mine-preview")).toHaveCount(0);
+    await expect(a.locator(".final-mine")).toHaveCount(0);
     await expect(a.locator(".red-start-marker")).toHaveCount(1);
     await expect(a.locator(".green-start-marker")).toHaveCount(1);
     await expect(a.locator(".treasure-uncollected")).toHaveCount(3);
@@ -108,6 +115,8 @@ test("two browsers complete forgotten mines without exposing hidden layouts", as
     await expect(b.locator(".forgotten-phase")).toHaveText("寻宝阶段");
     await expect(a.locator(".mine-preview")).toHaveCount(0);
     await expect(b.locator(".mine-preview")).toHaveCount(0);
+    await expect(a.locator(".final-mine")).toHaveCount(0);
+    await expect(b.locator(".final-mine")).toHaveCount(0);
     for (const page of [a, b]) {
       await expect(page.locator(".red-pawn")).toHaveCount(1);
       await expect(page.locator(".green-pawn")).toHaveCount(1);
@@ -156,6 +165,7 @@ test("two browsers complete forgotten mines without exposing hidden layouts", as
       await expect(page.locator(first === 0 ? ".red-pawn" : ".green-pawn")).toHaveCount(0);
       await expect(page.locator(first === 0 ? ".red-start-marker" : ".green-start-marker")).toHaveCount(1);
       await expect(page.locator(".legal-move")).toHaveCount(3);
+      await expect(page.locator(".final-mine")).toHaveCount(0);
     }
     await expect(pages[first].locator(".forgotten-cell:enabled")).toHaveCount(3);
     await expect(pages[second].locator(".forgotten-cell:enabled")).toHaveCount(0);
@@ -187,9 +197,23 @@ test("two browsers complete forgotten mines without exposing hidden layouts", as
     await expect(a.locator(".treasure-collected")).toHaveCount(3);
     await expect(b.locator(".treasure-collected")).toHaveCount(3);
     await expect(a.locator(".forgotten-result")).toContainText("三个宝物均已找到");
+    await expect(a.locator(".forgotten-result")).toContainText("完整雷图已公开");
     const aResult = await a.locator(".forgotten-result").textContent();
     const bResult = await b.locator(".forgotten-result").textContent();
     expect(aResult.match(/最终比分 (-?\d+) : (-?\d+)/)?.slice(1)).toEqual(bResult.match(/最终比分 (-?\d+) : (-?\d+)/)?.slice(1));
+
+    for (const page of [a, b]) {
+      await expect(page.locator(".final-mine-legend")).toBeVisible();
+      await expect(page.locator(".red-final-mine.final-mine")).toHaveCount(15);
+      await expect(page.locator(".green-final-mine.final-mine")).toHaveCount(15);
+      await expect(page.locator(".overlap-final-mine")).toHaveCount(2);
+      await expect(page.locator(".detonated-final-cell")).toHaveCount(1);
+      await expect(page.locator(".detonated-final-mine")).toHaveCount(2);
+      await expect(page.locator(".final-explosion")).toHaveCount(1);
+      await expect(page.locator(".forgotten-cell").nth(mine[first]).locator(".red-final-mine.final-mine")).toHaveCount(1);
+      await expect(page.locator(".forgotten-cell").nth(mine[first]).locator(".green-final-mine.final-mine")).toHaveCount(1);
+      await expect(page.locator(".forgotten-cell").nth(mine[second])).not.toHaveClass(/detonated-final-cell/);
+    }
 
     const browserData = await b.evaluate(() => {
       const parseStorage = (storage) => Object.values(storage).map((value) => { try { return JSON.parse(value); } catch { return value; } });
@@ -198,15 +222,67 @@ test("two browsers complete forgotten mines without exposing hidden layouts", as
       return { frames: window.__TEST_WS_FRAMES__, local: parseStorage(localStorage), session: parseStorage(sessionStorage), mineCells, exposedStateGlobals };
     });
     expect(browserData.frames.length).toBeGreaterThan(0);
-    expect(browserData.frames.some((payload) => containsMineSet(payload, placementA))).toBe(false);
+    const preFinishedFrames = browserData.frames.filter((payload) => payload.phase !== "FINISHED");
+    expect(preFinishedFrames.some((payload) => containsMineSet(payload, placementA))).toBe(false);
+    const afterGreenConfirmation = preFinishedFrames.filter((payload) => payload.phase !== "PLACING" || payload.confirmed?.[1] === true);
+    expect(afterGreenConfirmation.some((payload) => containsMineSet(payload, placementB))).toBe(false);
+    expect(preFinishedFrames.some((payload) => hasKey(payload, ["finalMineReveal", "originalPlacements", "detonatedMineHistory"]))).toBe(false);
+    const finishedFrame = browserData.frames.find((payload) => payload.type === "gameState" && payload.phase === "FINISHED");
+    expect(new Set(finishedFrame.finalMineReveal.red)).toEqual(new Set(placementA));
+    expect(new Set(finishedFrame.finalMineReveal.green)).toEqual(new Set(placementB));
+    expect(finishedFrame.finalMineReveal.detonated).toEqual([{ cell: mine[first], owners: [0, 1] }]);
     expect(containsMineSet(browserData.local, placementA)).toBe(false);
     expect(containsMineSet(browserData.session, placementA)).toBe(false);
-    expect(browserData.mineCells).toEqual([]);
+    expect(new Set(browserData.mineCells)).toEqual(new Set([...placementA, ...placementB]));
     expect(browserData.exposedStateGlobals).toEqual([]);
+
+    await a.reload();
+    await expect(a.locator(".forgotten-phase")).toHaveText("比赛结束");
+    await expect(a.locator(".red-final-mine.final-mine")).toHaveCount(15);
+    await expect(a.locator(".green-final-mine.final-mine")).toHaveCount(15);
+    await expect(a.locator(".detonated-final-mine")).toHaveCount(2);
+    await expect(a.locator(".forgotten-result")).toContainText("完整雷图已公开");
   } finally {
     await aContext.close();
     await bContext.close();
   }
+});
+
+test("terminal board distinguishes ownership, overlap, and detonation", async ({ page }) => {
+  await page.goto("/");
+  await page.evaluate(() => {
+    const boardEl = document.createElement("div");
+    boardEl.id = "terminal-reveal-fixture";
+    document.body.appendChild(boardEl);
+    const game = window.GameRegistry.get("forgotten-mines").create({ boardEl, sendGameAction() {}, seat: 0, phase: "FINISHED", playerNames: ["甲", "乙"] });
+    game.receive({
+      type: "gameState",
+      phase: "FINISHED",
+      winner: 0,
+      finishOutcome: "WINNER",
+      finishReason: "三个宝物均已找到",
+      scores: [30, 20],
+      positions: [9, 111],
+      collectedTreasures: [{ cell: 0, seat: 0, value: 10, order: 1 }, { cell: 60, seat: 1, value: 15, order: 2 }, { cell: 120, seat: 0, value: 20, order: 3 }],
+      exhaustedSafeCells: [9],
+      detonatedCells: [12, 13],
+      finalMineReveal: {
+        red: [12, 13, 15],
+        green: [12, 14, 16],
+        detonated: [{ cell: 12, owners: [0, 1] }, { cell: 13, owners: [0] }],
+      },
+    });
+  });
+  const fixture = page.locator("#terminal-reveal-fixture");
+  await expect(fixture.locator(".forgotten-cell").nth(12).locator(".red-final-mine.final-mine")).toHaveClass(/detonated-final-mine/);
+  await expect(fixture.locator(".forgotten-cell").nth(12).locator(".green-final-mine.final-mine")).toHaveClass(/detonated-final-mine/);
+  await expect(fixture.locator(".forgotten-cell").nth(12).locator(".overlap-final-mine")).toHaveCount(1);
+  await expect(fixture.locator(".forgotten-cell").nth(13).locator(".red-final-mine.final-mine")).toHaveClass(/detonated-final-mine/);
+  await expect(fixture.locator(".forgotten-cell").nth(14).locator(".green-final-mine.final-mine")).not.toHaveClass(/detonated-final-mine/);
+  await expect(fixture.locator(".forgotten-cell").nth(15).locator(".red-final-mine.final-mine")).not.toHaveClass(/detonated-final-mine/);
+  await expect(fixture.locator(".forgotten-cell").nth(16).locator(".green-final-mine.final-mine")).not.toHaveClass(/detonated-final-mine/);
+  await expect(fixture.locator(".final-mine-legend")).toContainText("双方重叠地雷");
+  await expect(fixture.locator(".final-mine-legend")).toContainText("已踩爆地雷");
 });
 
 test("terminal results distinguish a treasure draw from no-winner timeout and reconnect", async ({ page }) => {

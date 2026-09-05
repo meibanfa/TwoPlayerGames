@@ -4,7 +4,7 @@
   function create(ctx) {
     const root = document.createElement("section");
     root.className = "forgotten-game";
-    root.innerHTML = `<div class="forgotten-phase"></div><p class="forgotten-status" aria-live="polite"></p><div class="forgotten-scoreboard"><div class="score red"><span class="name"></span><strong>0</strong></div><div class="turn" aria-live="polite"></div><div class="score green"><span class="name"></span><strong>0</strong></div></div><div class="forgotten-meta"></div><div class="forgotten-legend"><span>🔴 红方棋子</span><span>🟢 绿方棋子</span><span>🔴起 红方起点</span><span>🟢起 绿方起点</span><span>💎 未收集宝物</span><span>◇ 已收集宝物</span><span>💥 已引爆</span><span>✓ 已结算</span><span>走 可移动</span></div><div class="forgotten-board" role="grid" aria-label="双方棋子共用的遗忘地雷棋盘"></div><div class="forgotten-actions"><button class="btn confirm" type="button">确认布雷</button></div><p class="forgotten-warning">确认后雷图会立即消失，请先记住关键位置。</p><p class="forgotten-event" aria-live="polite"></p><div class="forgotten-result hidden"></div><p class="forgotten-connection"></p>`;
+    root.innerHTML = `<div class="forgotten-phase"></div><p class="forgotten-status" aria-live="polite"></p><div class="forgotten-scoreboard"><div class="score red"><span class="name"></span><strong>0</strong></div><div class="turn" aria-live="polite"></div><div class="score green"><span class="name"></span><strong>0</strong></div></div><div class="forgotten-meta"></div><div class="forgotten-legend"><span>🔴 红方棋子</span><span>🟢 绿方棋子</span><span>🔴起 红方起点</span><span>🟢起 绿方起点</span><span>💎 未收集宝物</span><span>◇ 已收集宝物</span><span>💥 已引爆</span><span>✓ 已结算</span><span>走 可移动</span></div><div class="final-mine-legend hidden"><span><b class="legend-mine red-final-mine">红💣</b> 红方地雷</span><span><b class="legend-mine green-final-mine">绿💣</b> 绿方地雷</span><span><b class="legend-overlap">红💣绿💣</b> 双方重叠地雷</span><span><b class="legend-detonated">💥</b> 已踩爆地雷</span></div><div class="forgotten-board" role="grid" aria-label="双方棋子共用的遗忘地雷棋盘"></div><div class="forgotten-actions"><button class="btn confirm" type="button">确认布雷</button></div><p class="forgotten-warning">确认后雷图会立即消失，请先记住关键位置。</p><p class="forgotten-event" aria-live="polite"></p><div class="forgotten-result hidden"></div><p class="forgotten-connection"></p>`;
     ctx.boardEl.appendChild(root);
     const phaseEl = root.querySelector(".forgotten-phase");
     const statusEl = root.querySelector(".forgotten-status");
@@ -18,6 +18,7 @@
     const warningEl = root.querySelector(".forgotten-warning");
     const eventEl = root.querySelector(".forgotten-event");
     const resultEl = root.querySelector(".forgotten-result");
+    const finalMineLegendEl = root.querySelector(".final-mine-legend");
     const connectionEl = root.querySelector(".forgotten-connection");
     const cells = [];
     let phase = ctx.phase || "WAITING";
@@ -35,6 +36,7 @@
     let winner = null;
     let finishOutcome = null;
     let finishReason = null;
+    let finalMineReveal = null;
     let connectionMessage = "";
 
     nameEls[0].textContent = `${ctx.playerNames?.[0] || "玩家 A"}（红方）`;
@@ -99,7 +101,19 @@
           labels.push(seat === 0 ? "红方棋子" : "绿方棋子");
         }
       });
-      if (phase === "PLACING" && !confirmed[ctx.seat] && placement.has(cell)) { markers.push('<span class="state-marker mine-marker">💣</span>'); labels.push("你的地雷"); }
+      if (phase === "FINISHED" && finalMineReveal) {
+        const redMine = finalMineReveal.red.includes(cell);
+        const greenMine = finalMineReveal.green.includes(cell);
+        const detonation = finalMineReveal.detonated.find((entry) => entry.cell === cell);
+        if (redMine || greenMine) {
+          const mineMarkers = [];
+          if (redMine) mineMarkers.push(`<span class="final-mine red-final-mine${detonation?.owners.includes(0) ? " detonated-final-mine" : ""}">红💣</span>`);
+          if (greenMine) mineMarkers.push(`<span class="final-mine green-final-mine${detonation?.owners.includes(1) ? " detonated-final-mine" : ""}">绿💣</span>`);
+          if (detonation) mineMarkers.push('<span class="final-explosion">💥</span>');
+          markers.push(`<span class="final-mine-stack${redMine && greenMine ? " overlap-final-mine" : ""}${detonation ? " detonated-final-cell" : ""}">${mineMarkers.join("")}</span>`);
+          labels.push(`${redMine ? "红方地雷" : ""}${redMine && greenMine ? "和" : ""}${greenMine ? "绿方地雷" : ""}${detonation ? "，已踩爆" : "，未触发"}`);
+        }
+      } else if (phase === "PLACING" && !confirmed[ctx.seat] && placement.has(cell)) { markers.push('<span class="state-marker mine-marker">💣</span>'); labels.push("你的地雷"); }
       else if (detonatedCells.has(cell)) { markers.push('<span class="state-marker detonation-marker">💥</span>'); labels.push("已引爆地雷"); }
       else if (exhaustedSafeCells.has(cell)) { markers.push('<span class="state-marker exhausted-marker">✓</span>'); labels.push("已结算安全格"); }
       return { html: markers.join(""), labels };
@@ -146,13 +160,14 @@
       });
       eventEl.textContent = latestEvent?.text || "";
       connectionEl.textContent = connectionMessage;
+      finalMineLegendEl.classList.toggle("hidden", phase !== "FINISHED" || !finalMineReveal);
       resultEl.classList.toggle("hidden", phase !== "FINISHED");
       if (phase === "FINISHED") {
         let result = "比赛结束";
         if (finishOutcome === L.FINISH_OUTCOMES.NO_WINNER) result = "无胜者";
         else if (finishOutcome === L.FINISH_OUTCOMES.DRAW) result = "平局";
         else if (finishOutcome === L.FINISH_OUTCOMES.WINNER) result = winner === ctx.seat ? "🏆 你赢了！" : "这局是对手赢了";
-        resultEl.textContent = `${result} · 最终比分 ${scores[0]} : ${scores[1]} · ${finishReason || ""}`;
+        resultEl.textContent = `${result} · 最终比分 ${scores[0]} : ${scores[1]} · ${finishReason || ""} · 完整雷图已公开，可复盘本局。`;
       }
     }
     function receive(message) {
@@ -175,6 +190,7 @@
         winner = null;
         finishOutcome = null;
         finishReason = null;
+        finalMineReveal = null;
         placementDeadline = message.placementDeadline;
       }
       if (["gameState", "roomState", "gameFinished"].includes(message.type)) {
@@ -194,6 +210,11 @@
         if (message.winner !== undefined) winner = message.winner;
         if (message.finishOutcome !== undefined) finishOutcome = message.finishOutcome;
         if (message.finishReason !== undefined) finishReason = message.finishReason;
+        if (message.finalMineReveal !== undefined) finalMineReveal = message.finalMineReveal ? {
+          red: [...message.finalMineReveal.red],
+          green: [...message.finalMineReveal.green],
+          detonated: message.finalMineReveal.detonated.map((entry) => ({ cell: entry.cell, owners: [...entry.owners] })),
+        } : null;
       }
       render();
     }
@@ -211,7 +232,7 @@
       "双方在同一张 11×11 棋盘各埋 15 颗雷，可以把雷埋在同一格。红绿棋子轮流移动，三个公开宝物和双方起点始终标在棋盘上；确认后雷图会立即消失，请凭记忆行动。",
       "轮到你时可向八个方向移动一格。新安全格按周围剩余地雷总数得分；安全格全局只结算一次，宝物依次奖励 10、15、20 分。",
       "踩雷扣 5 分，所有该格地雷都会消失。你的棋子会暂时离开棋盘，并必须从起点旁选择保护格重新入场；重入不结算格子。",
-      "第三个宝物被找到后立即结束，分数更高者获胜，同分为平局。比赛结束也不会公开完整雷图。",
+      "第三个宝物被找到后立即结束，分数更高者获胜，同分为平局。对局中始终隐藏雷图；比赛结束后会公开双方完整原始雷图、重叠雷和已踩爆位置，供双方复盘。",
     ],
     create,
   });
