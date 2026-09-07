@@ -141,8 +141,28 @@ async function leaveAll(...sockets) {
     assert.deepEqual(room.state.scores, [0, 0]);
     assert.deepEqual(room.state.positions, L.START_CELLS);
 
+    const beforeForgedLocation = {
+      bombStatus: room.state.timedPlacements[0].get(2).status,
+      activationUsed: room.state.activationUsed,
+      scores: [...room.state.scores],
+      positions: [...room.state.positions],
+      turnCount: room.state.turnCount,
+    };
+    const forgedLocation = next(sockets[0], "error");
+    send(sockets[0], "gameAction", { action: "activateBomb", number: 2, bombLocation: 50 });
+    assert.match((await forgedLocation).message, /权威状态字段/);
+    assert.deepEqual({
+      bombStatus: room.state.timedPlacements[0].get(2).status,
+      activationUsed: room.state.activationUsed,
+      scores: room.state.scores,
+      positions: room.state.positions,
+      turnCount: room.state.turnCount,
+    }, beforeForgedLocation);
+    assert.equal(room.state.timedPlacements[0].get(2).status, L.BOMB_STATUSES.UNACTIVATED);
+    assert.equal(room.state.activationUsed, false);
+
     const activatedStates = sockets.map((socket) => next(socket, "gameState", (state) => state.recentEvents?.some((event) => event.kind === "activation")));
-    send(sockets[0], "gameAction", { action: "activateBomb", number: 2, bombLocation: undefined });
+    send(sockets[0], "gameAction", { action: "activateBomb", number: 2 });
     const activated = await Promise.all(activatedStates);
     activated.forEach((state) => {
       assertBombStatusesHaveNoCells(state);
