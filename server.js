@@ -5,7 +5,6 @@ const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 const { WebSocketServer } = require("ws");
-const createMinesweeperDuel = require("./server/games/minesweeper-duel");
 const createForgottenMines = require("./server/games/forgotten-mines");
 const createTimedMines = require("./server/games/timed-mines");
 
@@ -15,13 +14,11 @@ const PORT = configuredPort;
 const HOST = process.env.HOST || "0.0.0.0";
 const ROOT = path.resolve(__dirname);
 const RECONNECT_GRACE_MS = Number(process.env.RECONNECT_GRACE_MS) || 45_000;
-const PLACEMENT_MS = Number(process.env.PLACEMENT_MS) || 45_000;
 const MAX_MESSAGE_BYTES = 12_000;
 const MAX_ROOMS = Number(process.env.MAX_ROOMS) || 1_000;
 const CREATE_LIMIT = Number(process.env.CREATE_LIMIT) || 12;
 const CREATE_WINDOW_MS = Number(process.env.CREATE_WINDOW_MS) || 60_000;
 const WAITING_ROOM_TTL_MS = Number(process.env.WAITING_ROOM_TTL_MS) || 5 * 60_000;
-const FINISH_WINDOW_MS = Number(process.env.FINISH_WINDOW_MS) || 5_000;
 const FORGOTTEN_MINES_PLACEMENT_MS = Number(process.env.FORGOTTEN_MINES_PLACEMENT_MS) || 600_000;
 const TIMED_MINES_PLACEMENT_MS = Number(process.env.TIMED_MINES_PLACEMENT_MS) || 600_000;
 const WS_HEARTBEAT_MS = Number(process.env.WS_HEARTBEAT_MS) || 30_000;
@@ -47,7 +44,6 @@ function registerGame(handler) {
   if (!handler || !handler.id || gameHandlers.has(handler.id)) throw new Error("invalid or duplicate server game handler");
   gameHandlers.set(handler.id, handler);
 }
-registerGame(createMinesweeperDuel({ send, broadcast, sendError, placementMs: PLACEMENT_MS, finishWindowMs: FINISH_WINDOW_MS, isRoomActive: (room) => rooms.get(room.code) === room }));
 registerGame(createForgottenMines({ send, broadcast, sendError, placementMs: FORGOTTEN_MINES_PLACEMENT_MS, isRoomActive: (room) => rooms.get(room.code) === room }));
 registerGame(createTimedMines({ send, broadcast, sendError, placementMs: TIMED_MINES_PLACEMENT_MS, isRoomActive: (room) => rooms.get(room.code) === room }));
 
@@ -197,7 +193,7 @@ function rejoinRoom(ws, message) {
   send(room.players[1 - seat], "opponentReconnected", { gameId: room.gameId });
 }
 
-const PUBLIC_FILES = new Set(["index.html", "styles.css", "js/main.js", "js/net.js", "js/registry.js", "js/games/minesweeper-duel.js", "js/games/minesweeper-duel-logic.js", "js/games/forgotten-mines.js", "js/games/forgotten-mines-logic.js", "js/games/timed-mines.js", "js/games/timed-mines-logic.js"]);
+const PUBLIC_FILES = new Set(["index.html", "styles.css", "js/main.js", "js/net.js", "js/registry.js", "js/games/forgotten-mines.js", "js/games/forgotten-mines-logic.js", "js/games/timed-mines.js", "js/games/timed-mines-logic.js"]);
 const server = http.createServer((req, res) => {
   let requested;
   try { requested = decodeURIComponent((req.url || "/").split("?")[0]); } catch { res.writeHead(400); res.end("Bad Request"); return; }

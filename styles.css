@@ -14,10 +14,6 @@ h1 { font-size: clamp(2.5rem, 8vw, 5rem); margin: .15em 0; } h2 { margin-top: 0;
 .lobby-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 18px; margin-top: 30px; } label { display: block; margin: 14px 0; color: #dbcdb7; } input { display: block; width: 100%; margin-top: 6px; border: 1px solid #806447; border-radius: 9px; padding: 12px; background: #18110d; color: white; font: inherit; }
 .message { min-height: 1.5em; color: #f5bf68; }
 .game-header { display: flex; justify-content: space-between; align-items: flex-start; } .game-header h1 { font-size: 2.2rem; }
-.duel-game { background: #2b1b12; padding: 18px; border-radius: 18px; text-align: center; } .duel-phase { color: #f3c96d; font-size: 1.6rem; font-weight: 700; } .duel-subtitle, .duel-message { color: #dbcdb7; min-height: 1.4em; }
-.duel-stats, .progress { margin: 10px 0 16px; color: #f5bf68; font-weight: 700; }
-.duel-board { width: min(88vw, 520px); aspect-ratio: 1; margin: auto; display: grid; grid-template-columns: repeat(9, 1fr); gap: 3px; } .duel-cell { min-width: 0; border: 0; border-radius: 5px; background: #75583d; color: white; font-size: clamp(.8rem, 3vw, 1.25rem); font-weight: 700; cursor: pointer; } .duel-cell:hover { filter: brightness(1.25); } .duel-cell.revealed { background: #d9c8a6; color: #422716; } .duel-cell.mine-preview, .duel-cell.flagged { background: #a97245; } .duel-cell:nth-child(3n).revealed { color: #b63d31; } .duel-cell.revealed { color: #3171a9; } .duel-cell.revealed:nth-child(3n) { color: #b63d31; }
-.duel-actions { display: flex; justify-content: center; gap: 10px; margin-top: 18px; } .flag-mode.active { outline: 3px solid #f3a93d; }
 .forgotten-game { background: #2b1b12; padding: 18px; border-radius: 18px; text-align: center; }
 .forgotten-phase { color: #f3c96d; font-size: 1.6rem; font-weight: 700; }
 .forgotten-status, .forgotten-warning, .forgotten-event, .forgotten-connection { color: #dbcdb7; min-height: 1.4em; }

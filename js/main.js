@@ -1,6 +1,5 @@
 (function () {
   const SESSION_KEY = "two-player-games-session";
-  const LEGACY_SESSION_KEY = "minesweeper-duel-session";
   const $ = (id) => document.getElementById(id);
   const views = [$('homeView'), $('lobbyView'), $('gameView')];
   let game = null;
@@ -8,12 +7,13 @@
   let selectedGameId = GameRegistry.all()[0]?.id || null;
 
   try {
-    room = JSON.parse(localStorage.getItem(SESSION_KEY) || localStorage.getItem(LEGACY_SESSION_KEY) || "null");
-    if (room && !room.gameId) room.gameId = "minesweeper-duel";
-    if (room?.gameId) selectedGameId = room.gameId;
-    localStorage.removeItem(LEGACY_SESSION_KEY);
+    room = JSON.parse(localStorage.getItem(SESSION_KEY) || "null");
+    if (room?.gameId && GameRegistry.get(room.gameId)) selectedGameId = room.gameId;
+    else if (room) { room = null; localStorage.removeItem(SESSION_KEY); }
+    localStorage.removeItem("minesweeper-duel-session");
   } catch {
     room = null;
+    localStorage.removeItem(SESSION_KEY);
   }
 
   function show(view) { views.forEach((item) => item.classList.toggle("hidden", item !== view)); }
@@ -77,7 +77,7 @@
   function clearRoom() {
     room = null;
     localStorage.removeItem(SESSION_KEY);
-    localStorage.removeItem(LEGACY_SESSION_KEY);
+    localStorage.removeItem("minesweeper-duel-session");
   }
 
   function returnToLobby(reason) {
