@@ -173,6 +173,10 @@ test("home excludes the removed duel game and clears its stale session", async (
   await page.goto("/");
   await expect(page.locator(".game-card")).toHaveCount(2);
   await expect(page.locator(".game-card").filter({ hasText: "互坑扫雷" })).toHaveCount(0);
+  await page.evaluate(() => localStorage.setItem("two-player-games-session", "{corrupt-json"));
+  await page.reload();
+  await expect(page.locator("#homeView")).toBeVisible();
+  expect(await page.evaluate(() => localStorage.getItem("two-player-games-session"))).toBeNull();
   await page.evaluate(() => localStorage.setItem("two-player-games-session", JSON.stringify({ code: "1234", seat: 0, token: "old-token", gameId: "minesweeper-duel" })));
   await page.reload();
   await expect(page.locator("#homeView")).toBeVisible();
