@@ -36,6 +36,6 @@ The reviewer receives repository location, scope metadata, and instructions; it 
 
 ## Reports and configuration
 
-The reviewer validates strict JSON against `.review/review-schema.json`, writes `.review/latest.json` and `.review/latest.md`, and exits nonzero for BLOCK or malformed/unavailable output. Reports are ignored by Git. `CODEX_REVIEW_MODEL`, `CODEX_FIX_MODEL`, `CODEX_REVIEW_TIMEOUT_MS`, and `CODEX_BIN` are optional environment overrides; authentication comes from the local Codex installation.
+The reviewer validates strict JSON against `.review/review-schema.json`, writes `.review/latest.json` and `.review/latest.md`, and exits nonzero for BLOCK or malformed/unavailable output. Reports are ignored by Git. Reviewer and fixer subprocesses use GPT-6 Astra (`gpt-6-astra`) by default. `CODEX_REVIEW_MODEL`, `CODEX_FIX_MODEL`, `CODEX_REVIEW_TIMEOUT_MS`, and `CODEX_BIN` remain optional environment overrides; authentication comes from the local Codex installation.
 
 Do not use `codex exec resume` for review or fixing. A reviewer failure is never treated as approval. Read `.review/REVIEWER.md` and `.review/FIXER.md` when changing the harness.
