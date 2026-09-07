@@ -56,6 +56,7 @@ async function stop(child) {
     PORT: String(port),
     RECONNECT_GRACE_MS: process.env.RECONNECT_GRACE_MS || "4000",
     FORGOTTEN_MINES_PLACEMENT_MS: process.env.FORGOTTEN_MINES_PLACEMENT_MS || "600000",
+    TIMED_MINES_PLACEMENT_MS: process.env.TIMED_MINES_PLACEMENT_MS || "600000",
     PLAYWRIGHT_BASE_URL: `http://127.0.0.1:${port}`,
     PLAYWRIGHT_LOCAL_RUN: "1",
   };

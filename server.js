@@ -7,6 +7,7 @@ const crypto = require("crypto");
 const { WebSocketServer } = require("ws");
 const createMinesweeperDuel = require("./server/games/minesweeper-duel");
 const createForgottenMines = require("./server/games/forgotten-mines");
+const createTimedMines = require("./server/games/timed-mines");
 
 const configuredPort = process.env.PORT === undefined ? 8777 : Number(process.env.PORT);
 if (!Number.isInteger(configuredPort) || configuredPort < 1 || configuredPort > 65_535) throw new Error("PORT must be an integer between 1 and 65535");
@@ -22,6 +23,7 @@ const CREATE_WINDOW_MS = Number(process.env.CREATE_WINDOW_MS) || 60_000;
 const WAITING_ROOM_TTL_MS = Number(process.env.WAITING_ROOM_TTL_MS) || 5 * 60_000;
 const FINISH_WINDOW_MS = Number(process.env.FINISH_WINDOW_MS) || 5_000;
 const FORGOTTEN_MINES_PLACEMENT_MS = Number(process.env.FORGOTTEN_MINES_PLACEMENT_MS) || 600_000;
+const TIMED_MINES_PLACEMENT_MS = Number(process.env.TIMED_MINES_PLACEMENT_MS) || 600_000;
 const WS_HEARTBEAT_MS = Number(process.env.WS_HEARTBEAT_MS) || 30_000;
 const rooms = new Map();
 const ipCreates = new Map();
@@ -47,6 +49,7 @@ function registerGame(handler) {
 }
 registerGame(createMinesweeperDuel({ send, broadcast, sendError, placementMs: PLACEMENT_MS, finishWindowMs: FINISH_WINDOW_MS, isRoomActive: (room) => rooms.get(room.code) === room }));
 registerGame(createForgottenMines({ send, broadcast, sendError, placementMs: FORGOTTEN_MINES_PLACEMENT_MS, isRoomActive: (room) => rooms.get(room.code) === room }));
+registerGame(createTimedMines({ send, broadcast, sendError, placementMs: TIMED_MINES_PLACEMENT_MS, isRoomActive: (room) => rooms.get(room.code) === room }));
 
 function makeCode() {
   for (let i = 0; i < 10_000; i++) {
@@ -194,7 +197,7 @@ function rejoinRoom(ws, message) {
   send(room.players[1 - seat], "opponentReconnected", { gameId: room.gameId });
 }
 
-const PUBLIC_FILES = new Set(["index.html", "styles.css", "js/main.js", "js/net.js", "js/registry.js", "js/games/minesweeper-duel.js", "js/games/minesweeper-duel-logic.js", "js/games/forgotten-mines.js", "js/games/forgotten-mines-logic.js"]);
+const PUBLIC_FILES = new Set(["index.html", "styles.css", "js/main.js", "js/net.js", "js/registry.js", "js/games/minesweeper-duel.js", "js/games/minesweeper-duel-logic.js", "js/games/forgotten-mines.js", "js/games/forgotten-mines-logic.js", "js/games/timed-mines.js", "js/games/timed-mines-logic.js"]);
 const server = http.createServer((req, res) => {
   let requested;
   try { requested = decodeURIComponent((req.url || "/").split("?")[0]); } catch { res.writeHead(400); res.end("Bad Request"); return; }
