@@ -9,6 +9,7 @@ const ROOT = path.resolve(new URL("../", import.meta.url).pathname);
 const REVIEW_DIR = path.join(ROOT, ".review");
 const SCHEMA = path.join(REVIEW_DIR, "review-schema.json");
 const TIMEOUT_MS = Number(process.env.CODEX_REVIEW_TIMEOUT_MS) || 180_000;
+const DEFAULT_CODEX_MODEL = "gpt-6-astra";
 
 function git(args, allowFailure = false) {
   try { return execFileSync("git", args, { cwd: ROOT, encoding: "utf8", stdio: ["ignore", "pipe", allowFailure ? "pipe" : "pipe"] }).trim(); }
@@ -32,12 +33,16 @@ function scope(options) {
   if (!options.commit && !options.workingTree && baseSha === head && files.length === 0) throw new Error("No reviewable diff detected. Specify --base <commit> or use --working-tree.");
   return { base, baseSha, head, range, commitCount: range ? Number(git(["rev-list", "--count", range], true) || 0) : 0, files, stat };
 }
+function codexModel(mode, environment = process.env) {
+  if (mode === "read-only") return environment.CODEX_REVIEW_MODEL || DEFAULT_CODEX_MODEL;
+  if (mode === "workspace-write") return environment.CODEX_FIX_MODEL || DEFAULT_CODEX_MODEL;
+  throw new Error(`Unsupported Codex mode: ${mode}`);
+}
 function runCodex(prompt, mode, schemaPath = null) {
   const output = path.join(os.tmpdir(), `codex-review-${process.pid}-${Date.now()}.json`);
   const args = ["exec", "--ephemeral", "--sandbox", mode, "--ignore-user-config", "--ignore-rules", "--color", "never", "--output-last-message", output, "-C", ROOT];
   if (schemaPath) args.push("--output-schema", schemaPath);
-  if (process.env.CODEX_REVIEW_MODEL && mode === "read-only") args.push("--model", process.env.CODEX_REVIEW_MODEL);
-  if (process.env.CODEX_FIX_MODEL && mode === "workspace-write") args.push("--model", process.env.CODEX_FIX_MODEL);
+  args.push("--model", codexModel(mode));
   return new Promise((resolve, reject) => {
     const child = spawn(process.env.CODEX_BIN || "codex", args, { cwd: ROOT, stdio: ["pipe", "pipe", "pipe"], env: { ...process.env, CODEX_DISABLE_PROMPT_INJECTION: "1" } });
     let stderr = ""; child.stderr.on("data", (chunk) => { stderr += chunk; });
@@ -69,7 +74,7 @@ function markdown(review, info) {
   if (review.verification_notes.length) lines.push("## Verification notes", "", ...review.verification_notes.map((note) => `- ${note}`));
   return lines.join("\n");
 }
-export { parseStructured, scope, runCodex, validateReview };
+export { DEFAULT_CODEX_MODEL, codexModel, parseStructured, scope, runCodex, validateReview };
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   try {
     const options = parseArgs(process.argv.slice(2));
