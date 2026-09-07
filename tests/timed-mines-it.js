@@ -132,6 +132,9 @@ async function leaveAll(...sockets) {
     const forgedOwner = next(sockets[0], "error");
     send(sockets[0], "gameAction", { action: "activateBomb", owner: 1, number: 1 });
     assert.match((await forgedOwner).message, /自己的定时炸弹/);
+    const forgedNumber = next(sockets[0], "error");
+    send(sockets[0], "gameAction", { action: "activateBomb", number: 4 });
+    assert.match((await forgedNumber).message, /编号无效/);
     const forgedScore = next(sockets[0], "error");
     send(sockets[0], "gameAction", { action: "move", cell: 20, score: 999 });
     assert.match((await forgedScore).message, /权威状态字段/);
@@ -155,6 +158,9 @@ async function leaveAll(...sockets) {
     send(sockets[0], "gameAction", { action: "move", cell: 20 });
     const redMoved = await afterRedMove;
     assert.equal(redMoved.bombStatuses.find((bomb) => bomb.seat === 0 && bomb.number === 2).remainingOpponentMoves, 2);
+    const duplicateMove = next(sockets[0], "error");
+    send(sockets[0], "gameAction", { action: "move", cell: 21 });
+    assert.match((await duplicateMove).message, /不能移动/);
 
     await close(sockets[0]);
     const gameplayA = await open(url, frames[0]); live.push(gameplayA);
@@ -172,6 +178,9 @@ async function leaveAll(...sockets) {
     send(sockets[1], "gameAction", { action: "move", cell: 100 });
     const greenMoved = await afterGreenMove;
     assert.equal(greenMoved.bombStatuses.find((bomb) => bomb.seat === 0 && bomb.number === 2).remainingOpponentMoves, 1);
+    const activeAgain = next(sockets[0], "error");
+    send(sockets[0], "gameAction", { action: "activateBomb", number: 2 });
+    assert.match((await activeAgain).message, /不能再次启动/);
     const afterRedAgain = next(sockets[1], "gameState", (state) => state.currentTurn === 1 && state.turnCount === 3);
     send(sockets[0], "gameAction", { action: "move", cell: 21 });
     await afterRedAgain;
@@ -272,12 +281,65 @@ async function leaveAll(...sockets) {
     assert.equal(treasureTerminal.finishReason, "三个宝物均已找到");
     assert.deepEqual(treasureTerminal.scores, [15, 45]);
 
+    const immunityMatch = await createAndJoin(url, ["免疫甲", "受伤乙"]); live.push(immunityMatch.a, immunityMatch.b);
+    const immunityRoom = rooms.get(immunityMatch.created.code);
+    clearTimeout(immunityRoom.placementTimer);
+    immunityRoom.state.phase = "PLAYING";
+    immunityRoom.state.confirmed = [true, true];
+    immunityRoom.state.placementDeadline = null;
+    immunityRoom.state.normalPlacements = [new Set(), new Set()];
+    immunityRoom.state.originalNormalPlacements = [new Set(), new Set()];
+    immunityRoom.state.timedPlacements = [
+      new Map([[1, { number: 1, cell: 19, status: L.BOMB_STATUSES.ACTIVE, remainingOpponentMoves: 1 }]]),
+      new Map(),
+    ];
+    immunityRoom.state.originalTimedPlacements = [new Map([[1, 19]]), new Map()];
+    immunityRoom.state.positions = [9, 7];
+    immunityRoom.state.scores = [6, 6];
+    immunityRoom.state.currentTurn = 1;
+    immunityRoom.state.turnCount = 68;
+    const immunityState = next(immunityMatch.a, "gameState", (state) => state.publicExplosions?.length === 1);
+    send(immunityMatch.b, "gameAction", { action: "move", cell: 8 });
+    const immunityResult = await immunityState;
+    assert.deepEqual(immunityRoom.state.scores, [6, 3], "green earns 2 neighbor points before taking the 5-point blast penalty while red remains immune");
+    assert.deepEqual(immunityRoom.state.positions, [9, L.START_CELLS[1]]);
+    assert.deepEqual(immunityResult.publicExplosions[0].affectedSeats, [1]);
+
+    immunityRoom.state.normalPlacements[0].add(21);
+    immunityRoom.state.originalNormalPlacements[0].add(21);
+    immunityRoom.state.positions = [20, L.START_CELLS[0]];
+    immunityRoom.state.currentTurn = 0;
+    const turnsBeforeReentry = immunityRoom.state.turnCount;
+    const collisionState = next(immunityMatch.a, "gameState", (state) => state.phase === "REENTRY");
+    send(immunityMatch.a, "gameAction", { action: "move", cell: 21 });
+    const collision = await collisionState;
+    assert.deepEqual(collision.positions, [null, L.START_CELLS[0]]);
+    assert.equal(collision.pendingReentrySeat, 0);
+    assert.equal(immunityRoom.state.turnCount, turnsBeforeReentry + 1);
+    const afterReentry = next(immunityMatch.a, "gameState", (state) => state.phase === "PLAYING");
+    send(immunityMatch.a, "gameAction", { action: "reenter", cell: 9 });
+    await afterReentry;
+    assert.equal(immunityRoom.state.turnCount, turnsBeforeReentry + 1, "reentry incremented the movement counter");
+    assert.deepEqual(immunityRoom.state.positions, [9, L.START_CELLS[0]]);
+
+    immunityRoom.state.positions = [20, 100];
+    immunityRoom.state.currentTurn = 0;
+    immunityRoom.state.turnCount = 69;
+    immunityRoom.state.scores = [4, 4];
+    const tieFinished = next(immunityMatch.a, "gameState", (state) => state.phase === "FINISHED");
+    send(immunityMatch.a, "gameAction", { action: "move", cell: 21 });
+    const tieResult = await tieFinished;
+    assert.equal(tieResult.finishOutcome, L.FINISH_OUTCOMES.DRAW);
+    assert.equal(tieResult.winner, null);
+    assert.deepEqual(tieResult.scores, [4, 4]);
+
     const timeoutMatch = await createAndJoin(url, ["超时甲", "超时乙"]); live.push(timeoutMatch.a, timeoutMatch.b);
     const timeoutRoom = rooms.get(timeoutMatch.created.code);
     timeoutRoom.state.normalPlacements[0] = new Set(redPlacement.normal);
     timeoutRoom.state.timedPlacements[0] = new Map(redPlacement.timed.map((bomb) => [bomb.number, { ...bomb, status: L.BOMB_STATUSES.UNACTIVATED, remainingOpponentMoves: null }]));
     timeoutRoom.state.normalPlacements[1] = new Set(greenPlacement.normal.slice(0, 5));
     const timeoutFinished = next(timeoutMatch.a, "gameFinished");
+    await close(timeoutMatch.b);
     gameHandlers.get("timed-mines").handlePlacementTimeout(timeoutRoom, timeoutRoom.state);
     const timeoutResult = await timeoutFinished;
     assert.equal(timeoutResult.winner, 0);
@@ -291,7 +353,7 @@ async function leaveAll(...sockets) {
       if (frame.phase !== "PLACING" || frame.confirmed?.[0]) assertNoHiddenState(frame);
       assertBombStatusesHaveNoCells(frame);
     });
-    await leaveAll(match.a, match.b, treasureMatch.a, treasureMatch.b, timeoutMatch.a, timeoutMatch.b);
+    await leaveAll(match.a, match.b, treasureMatch.a, treasureMatch.b, immunityMatch.a, immunityMatch.b, timeoutMatch.a);
     console.log("ok online: timed mines authority, countdown, explosions, secrecy, reconnect, restart, and terminal rules");
   } finally {
     await Promise.allSettled(live.map(close));
