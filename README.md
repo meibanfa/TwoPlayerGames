@@ -6,12 +6,15 @@
 
 - **互坑扫雷**：双方为对手埋雷，同时扫雷，以实际用时加罚时决定胜负。
 - **遗忘的地雷**：双方埋雷后忘掉雷图，轮流移动、避雷并争夺三个宝物。
+- **定时炸弹扫雷**：布置普通地雷和三枚编号定时炸弹，在隐藏雷图上启动倒计时、躲避爆炸并争夺宝物。
 
 ![双人小游戏首页](docs/screenshots/forgotten-mines-home.png)
 
 ![遗忘的地雷寻宝阶段](docs/screenshots/forgotten-mines-game.png)
 
 ![遗忘的地雷终局雷图复盘](docs/screenshots/forgotten-mines-final-reveal.png)
+
+![定时炸弹扫雷启动与倒计时](docs/screenshots/timed-mines-game.png)
 
 ## 在线游玩
 
@@ -40,9 +43,9 @@ Playwright 首次运行前执行 `npx playwright install --with-deps chromium`�
 
 浏览器使用原生 HTML/CSS/JavaScript。`js/registry.js` 驱动首页卡片和游戏挂载，客户端游戏位于 `js/games/`。`server.js` 只管理通用房间、身份、重连和双票重开；`server/games/` 内的处理器拥有各自权威状态、动作校验、计时器和按席位公开序列化器。
 
-客户端只提交意图，不提交分数、命中结果、位置、计时或胜负。互坑扫雷在终局前不发送对手雷区；遗忘的地雷在本人确认后连本人旧雷图也不再发送，只有服务器权威状态进入 `FINISHED` 后才公开双方完整原始雷图和踩爆归属供复盘。通用会话键 `two-player-games-session` 只保存房间码、席位、token、游戏 ID 和玩家名，绝不保存雷图。
+客户端只提交意图，不提交分数、命中结果、位置、计时或胜负。互坑扫雷在终局前不发送对手雷区；遗忘的地雷和定时炸弹扫雷在本人确认后连本人旧地图也不再发送，只有服务器权威状态进入 `FINISHED` 后才公开双方完整原始地图和合法事件历史供复盘。定时炸弹的启动与倒计时只公开拥有者、编号和剩余对手移动次数，不公开坐标。通用会话键 `two-player-games-session` 只保存房间码、席位、token、游戏 ID 和玩家名，绝不保存雷图。
 
-完整协议与状态边界见 [架构说明](docs/ARCHITECTURE.md)，遗忘的地雷精确规则见 [规则决策](docs/FORGOTTEN_MINES.md)。
+完整协议与状态边界见 [架构说明](docs/ARCHITECTURE.md)，精确规则见 [遗忘的地雷规则](docs/FORGOTTEN_MINES.md)和[定时炸弹扫雷规则](docs/TIMED_MINES.md)。
 
 ## 部署
 
@@ -52,7 +55,7 @@ GitHub Actions 对 pull request 和 `main` 分别执行 lint、Node 测试和 Ch
 curl -fsS https://<service>.onrender.com/health
 ```
 
-可选参数包括 `HOST`、`PORT`、`RECONNECT_GRACE_MS`、`PLACEMENT_MS`、`FORGOTTEN_MINES_PLACEMENT_MS`、`FINISH_WINDOW_MS`、`WAITING_ROOM_TTL_MS`、`MAX_ROOMS` 和 `WS_HEARTBEAT_MS`。
+可选参数包括 `HOST`、`PORT`、`RECONNECT_GRACE_MS`、`PLACEMENT_MS`、`FORGOTTEN_MINES_PLACEMENT_MS`、`TIMED_MINES_PLACEMENT_MS`、`FINISH_WINDOW_MS`、`WAITING_ROOM_TTL_MS`、`MAX_ROOMS` 和 `WS_HEARTBEAT_MS`。
 
 ## 添加新游戏
 
