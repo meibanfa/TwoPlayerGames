@@ -309,6 +309,7 @@ async function leaveAll(...sockets) {
     immunityRoom.state.originalNormalPlacements[0].add(21);
     immunityRoom.state.positions = [20, L.START_CELLS[0]];
     immunityRoom.state.currentTurn = 0;
+    immunityRoom.state.turnCount = 20;
     const turnsBeforeReentry = immunityRoom.state.turnCount;
     const collisionState = next(immunityMatch.a, "gameState", (state) => state.phase === "REENTRY");
     send(immunityMatch.a, "gameAction", { action: "move", cell: 21 });
