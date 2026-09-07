@@ -84,10 +84,10 @@ async function leaveAll(...sockets) {
     send(unsupported, "create", { gameId: "missing-game", playerName: "攻击者" });
     assert.match((await unsupportedError).message, /不支持/);
 
-    const minesRoom = await createAndJoin(url, "minesweeper-duel", ["扫雷甲", "扫雷乙"]); live.push(minesRoom.a, minesRoom.b);
+    const timedRoom = await createAndJoin(url, "timed-mines", ["计时甲", "计时乙"]); live.push(timedRoom.a, timedRoom.b);
     const forgottenFrames = [[], []];
     const match = await createAndJoin(url, "forgotten-mines", ["红方", "绿方"], forgottenFrames); live.push(match.a, match.b);
-    assert.notEqual(minesRoom.created.code, match.created.code);
+    assert.notEqual(timedRoom.created.code, match.created.code);
     assert.equal(rooms.get(match.created.code).gameId, "forgotten-mines");
     match.initialStates.forEach((state) => {
       assert.equal(state.phase, "PLACING");
@@ -420,7 +420,7 @@ async function leaveAll(...sockets) {
       assertNoPlacement(message);
       assertNoTerminalReveal(message);
     });
-    await leaveAll(unsupported, minesRoom.a, minesRoom.b, match.a, match.b, collisionMatch.a, collisionMatch.b, timeoutMatch.a, timeoutMatch.b, bothFail.a, bothFail.b, bothReady.a, bothReady.b, expiring.a);
+    await leaveAll(unsupported, timedRoom.a, timedRoom.b, match.a, match.b, collisionMatch.a, collisionMatch.b, timeoutMatch.a, timeoutMatch.b, bothFail.a, bothFail.b, bothReady.a, bothReady.b, expiring.a);
     console.log("ok online: multi-game forgotten-mines authority, secrecy, timeout, reconnect, and restart");
   } finally {
     await Promise.allSettled(live.map(close));
